@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LumosPresenter | Engine Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Hanken+Grotesk:wght@600;700;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "inverse-on-surface": "#283044",
+                "tertiary-fixed-dim": "#ffb95f",
+                "on-tertiary-container": "#3e2400",
+                "background": "#0b1326",
+                "surface": "#0b1326",
+                "on-primary": "#002e6a",
+                "slate-surface": "#1E293B",
+                "primary-container": "#4d8eff",
+                "surface-container-highest": "#2d3449",
+                "surface-container-lowest": "#060e20",
+                "tertiary": "#ffb95f",
+                "on-secondary-fixed-variant": "#005236",
+                "surface-container": "#171f33",
+                "outline-variant": "#424754",
+                "on-error": "#690005",
+                "on-secondary": "#003824",
+                "surface-variant": "#2d3449",
+                "secondary-fixed-dim": "#4edea3",
+                "secondary": "#4edea3",
+                "surface-dim": "#0b1326",
+                "secondary-container": "#00a572",
+                "surface-bright": "#31394d",
+                "on-primary-container": "#00285d",
+                "secondary-fixed": "#6ffbbe",
+                "surface-container-low": "#131b2e",
+                "tertiary-container": "#ca8100",
+                "inverse-surface": "#dae2fd",
+                "primary-fixed": "#d8e2ff",
+                "slate-muted": "#64748B",
+                "on-tertiary-fixed": "#2a1700",
+                "on-error-container": "#ffdad6",
+                "inverse-primary": "#005ac2",
+                "on-tertiary": "#472a00",
+                "primary": "#adc6ff",
+                "on-surface": "#dae2fd",
+                "on-background": "#dae2fd",
+                "on-primary-fixed-variant": "#004395",
+                "tertiary-fixed": "#ffddb8",
+                "on-tertiary-fixed-variant": "#653e00",
+                "navy-deep": "#020617",
+                "rose-error": "#F43F5E",
+                "amber-warning": "#F59E0B",
+                "emerald-live": "#10B981",
+                "surface-container-high": "#222a3d",
+                "primary-fixed-dim": "#adc6ff",
+                "on-secondary-fixed": "#002113",
+                "surface-tint": "#adc6ff",
+                "on-surface-variant": "#c2c6d6",
+                "error-container": "#93000a",
+                "on-secondary-container": "#00311f",
+                "outline": "#8c909f",
+                "on-primary-fixed": "#001a42",
+                "error": "#ffb4ab"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "fontFamily": {
+                "body-lg": ["Inter"],
+                "headline-md": ["Hanken Grotesk"],
+                "display-live": ["Hanken Grotesk"],
+                "mono-ui": ["JetBrains Mono"],
+                "headline-lg": ["Hanken Grotesk"],
+                "status-label": ["JetBrains Mono"],
+                "body-md": ["Inter"],
+                "headline-lg-mobile": ["Hanken Grotesk"]
+            }
+          },
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #424754; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #adc6ff; }
+        
+        .radio-card:checked + label {
+            border-color: #adc6ff;
+            background-color: #1E293B;
+            box-shadow: 0 0 15px rgba(173, 198, 255, 0.25);
+        }
+
+        .custom-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #adc6ff;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #adc6ff;
+        }
+
+        .glow-border-animate {
+            position: relative;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .glow-border-animate::before {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            left: -50%;
+            top: -50%;
+            width: 200%;
+            height: 200%;
+            background: conic-gradient(from 0deg, transparent, #adc6ff, transparent, #adc6ff, transparent);
+            animation: rotate 4s linear infinite;
+        }
+        .glow-border-animate::after {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            left: 1px;
+            top: 1px;
+            width: calc(100% - 2px);
+            height: calc(100% - 2px);
+            background: #171f33;
+            border-radius: 0.7rem;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .light-beam-bg {
+            background: radial-gradient(circle at 50% -20%, rgba(173, 198, 255, 0.15) 0%, transparent 60%),
+                        linear-gradient(to bottom, #131b2e, #0b1326);
+        }
+
+        .lit-toggle:checked + .toggle-bg {
+            background-color: #adc6ff;
+            box-shadow: 0 0 8px #adc6ff;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-btn.active { 
+            color: #adc6ff; 
+            border-bottom: 2px solid #adc6ff;
+        }
+    </style>
+</head>
+<body class="bg-navy-deep text-on-surface font-body-md selection:bg-primary-container selection:text-on-primary-container min-h-screen flex flex-col">
+<!-- Top App Bar Navigation -->
+<header class="sticky top-0 z-50 flex items-center justify-between h-16 px-gutter bg-surface border-b border-outline-variant">
+<div class="flex items-center gap-8">
+<div class="flex flex-col">
+<h1 class="font-headline-md text-xl font-bold text-primary leading-none">LumosPresenter</h1>
+<span class="text-[10px] font-mono-ui text-on-surface-variant/60 uppercase tracking-widest mt-1">Live Console</span>
+</div>
+<nav class="flex gap-1 h-full items-center">
+<a class="px-4 py-2 text-on-surface-variant hover:text-primary transition-colors font-status-label text-sm" href="#">Stage</a>
+<a class="px-4 py-2 text-on-surface-variant hover:text-primary transition-colors font-status-label text-sm" href="#">Scripture</a>
+<a class="px-4 py-2 text-on-surface-variant hover:text-primary transition-colors font-status-label text-sm" href="#">Songs</a>
+<a class="px-4 py-2 text-on-surface-variant hover:text-primary transition-colors font-status-label text-sm" href="#">Media</a>
+<a class="px-4 py-2 text-primary border-b-2 border-primary font-status-label text-sm font-bold" href="#">Settings</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+<span class="w-2 h-2 rounded-full bg-emerald-live animate-pulse shadow-[0_0_5px_#10B981]"></span>
+<span class="font-mono-ui text-[10px] text-on-surface-variant uppercase tracking-tighter">Engine: Active</span>
+</div>
+<button class="flex items-center gap-2 px-4 py-1.5 bg-rose-error text-white font-status-label text-xs rounded hover:opacity-80 transition-opacity shadow-[0_0_15px_rgba(244,63,94,0.3)]">
+<span class="material-symbols-outlined text-sm">stop_circle</span>
+            Stop Listening
+        </button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary p-2">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary p-2">account_circle</button>
+</div>
+</header>
+<main class="flex-1 pb-24">
+<!-- Tab Controls -->
+<div class="bg-surface-container-low border-b border-outline-variant sticky top-16 z-40">
+<div class="max-w-6xl mx-auto px-8 flex gap-8">
+<button class="tab-btn active py-4 font-status-label text-sm transition-all border-b-2 border-transparent" id="btn-engine" onclick="switchTab('engine')">Engine &amp; Transcription</button>
+<button class="tab-btn py-4 font-status-label text-sm transition-all border-b-2 border-transparent" id="btn-databases" onclick="switchTab('databases')">Databases</button>
+<button class="tab-btn py-4 font-status-label text-sm transition-all border-b-2 border-transparent" id="btn-account" onclick="switchTab('account')">Account &amp; System</button>
+</div>
+</div>
+<div class="p-8 max-w-6xl mx-auto">
+<!-- Tab 1: Engine & Transcription -->
+<div class="tab-content active space-y-12" id="tab-engine">
+<div class="grid grid-cols-12 gap-8">
+<div class="col-span-12 lg:col-span-8 space-y-8">
+<!-- Speech Engine Selection -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-md text-xl text-on-surface">Speech Engine Selection</h3>
+<span class="font-mono-ui text-[10px] text-slate-muted uppercase">Backend Backend</span>
+</div>
+<div class="flex flex-col gap-3">
+<div class="relative">
+<input checked="" class="hidden radio-card" id="engine-whisper" name="engine" type="radio"/>
+<label class="block cursor-pointer bg-surface-container border border-outline-variant rounded-xl hover:border-primary-container transition-all glow-border-animate p-4" for="engine-whisper">
+<div class="flex items-center gap-4 w-full">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-1">
+<p class="font-bold text-on-surface">Whisper.net</p>
+<span class="bg-primary/20 text-primary px-2 py-0.5 rounded text-[10px] font-bold uppercase">Recommended</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">High accuracy biblical transcription. Ideal for complex liturgical language.</p>
+</div>
+<div class="flex items-center gap-2 font-mono-ui text-[10px] text-emerald-live whitespace-nowrap"><span class="material-symbols-outlined text-sm">verified</span> ACCURACY</div>
+</div>
+</label>
+</div>
+<div class="relative">
+<input class="hidden radio-card" id="engine-sherpa" name="engine" type="radio"/>
+<label class="block cursor-pointer bg-surface-container border border-outline-variant rounded-xl hover:border-primary-container transition-all p-4" for="engine-sherpa">
+<div class="flex items-center gap-4 w-full">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-1">
+<p class="font-bold text-on-surface">sherpa-onnx</p>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">Ultra-low latency for fast-paced preaching environments.</p>
+</div>
+<div class="flex items-center gap-2 font-mono-ui text-[10px] text-secondary whitespace-nowrap"><span class="material-symbols-outlined text-sm">bolt</span> SPEED</div>
+</div>
+</label>
+</div>
+</div>
+</section>
+<!-- Context Window Size -->
+<section class="p-6 bg-surface-container rounded-xl border border-outline-variant">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h3 class="font-bold text-lg text-on-surface">Context Window Size</h3>
+<p class="text-xs text-on-surface-variant">History buffer size for verse reference detection.</p>
+</div>
+<div class="bg-navy-deep px-3 py-1 rounded border border-outline-variant">
+<span class="font-display-live text-xl text-primary" id="context-val">15</span>
+<span class="text-[10px] text-slate-muted uppercase font-mono-ui ml-1">Words</span>
+</div>
+</div>
+<input class="w-full h-1 bg-surface-container-lowest rounded-lg appearance-none cursor-pointer custom-range" max="50" min="5" oninput="document.getElementById('context-val').innerText = this.value" type="range" value="15"/>
+<div class="flex justify-between mt-4 text-[10px] font-mono-ui text-slate-muted uppercase">
+<span>Short (Fast)</span>
+<span>Deep (Better Context)</span>
+</div>
+</section>
+</div>
+<!-- Auto-Live Confidence -->
+<div class="col-span-12 lg:col-span-4">
+<section class="bg-surface-container-high p-8 rounded-xl border border-outline-variant shadow-[0_4px_20px_rgba(0,0,0,0.4)] sticky top-48">
+<h3 class="font-headline-md text-xl text-on-surface mb-2">Auto-Live Threshold</h3>
+<p class="text-xs text-on-surface-variant mb-8 leading-relaxed">Set the confidence level required to automatically push a detected verse to the live display.</p>
+<div class="space-y-8">
+<div class="flex justify-between items-end">
+<span class="font-mono-ui text-xs text-primary uppercase tracking-widest">Confidence</span>
+<span class="font-display-live text-4xl text-primary drop-shadow-[0_0_10px_rgba(173,198,255,0.4)]" id="confidence-value">85%</span>
+</div>
+<input class="w-full h-1.5 bg-surface-container-lowest rounded-lg appearance-none cursor-pointer custom-range" max="100" min="50" oninput="document.getElementById('confidence-value').innerText = this.value + '%'" type="range" value="85"/>
+<div class="flex justify-between text-[10px] font-mono-ui text-slate-muted uppercase">
+<span>Relaxed</span>
+<span>Strict</span>
+</div>
+<div class="p-4 bg-navy-deep/50 rounded-lg border border-outline-variant/30 flex gap-3">
+<span class="material-symbols-outlined text-amber-warning text-xl">info</span>
+<p class="text-[11px] text-on-surface-variant italic leading-tight">
+                                    High thresholds reduce false positives but may delay automatic transitions for quieter speakers.
+                                </p>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+<!-- Tab 2: Databases -->
+<div class="tab-content space-y-12" id="tab-databases">
+<div class="grid grid-cols-12 gap-8">
+<!-- Bible Versions -->
+<section class="col-span-12 lg:col-span-7 space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-md text-xl text-on-surface">Bible Library</h3>
+<button class="text-primary hover:text-primary-container text-xs flex items-center gap-1 font-status-label">
+<span class="material-symbols-outlined text-sm">cloud_download</span>
+                            Add More Versions
+                        </button>
+</div>
+<div class="bg-surface-container border border-outline-variant rounded-xl divide-y divide-outline-variant/30">
+<div class="flex items-center justify-between p-5 hover:bg-slate-surface transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded bg-navy-deep border border-outline-variant flex items-center justify-center font-bold text-primary shadow-[0_0_5px_rgba(173,198,255,0.2)]">KJV</div>
+<div>
+<p class="font-bold">King James Version</p>
+<p class="text-[10px] text-slate-muted uppercase font-mono-ui">Version 2.1 • Installed • 4.2 MB</p>
+</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer lit-toggle" type="checkbox"/>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all toggle-bg"></div>
+</label>
+</div>
+<div class="flex items-center justify-between p-5 hover:bg-slate-surface transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded bg-navy-deep border border-outline-variant flex items-center justify-center font-bold text-secondary shadow-[0_0_5px_rgba(78,222,163,0.2)]">WEB</div>
+<div>
+<p class="font-bold">World English Bible</p>
+<p class="text-[10px] text-slate-muted uppercase font-mono-ui">Version 1.0 • Installed • 3.8 MB</p>
+</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer lit-toggle" type="checkbox"/>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all toggle-bg"></div>
+</label>
+</div>
+<div class="flex items-center justify-between p-5 hover:bg-slate-surface transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded bg-navy-deep border border-outline-variant flex items-center justify-center font-bold text-tertiary shadow-[0_0_5px_rgba(255,185,95,0.2)]">ASV</div>
+<div>
+<p class="font-bold">American Standard Version</p>
+<p class="text-[10px] text-slate-muted uppercase font-mono-ui">Version 1901 • Local Cache • 4.5 MB</p>
+</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer lit-toggle" type="checkbox"/>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all toggle-bg"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Import Tools -->
+<section class="col-span-12 lg:col-span-5 space-y-4">
+<h3 class="font-headline-md text-xl text-on-surface">External Sync</h3>
+<div class="h-[340px] flex flex-col items-center justify-center border-2 border-dashed border-outline-variant bg-surface-container-low rounded-xl p-8 text-center hover:border-primary transition-all cursor-pointer group light-beam-bg relative overflow-hidden">
+<div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-[0_0_30px_rgba(173,198,255,0.1)]">
+<span class="material-symbols-outlined text-primary text-4xl">database_upload</span>
+</div>
+<h4 class="font-bold text-lg text-on-surface mb-2">Import EasyWorship</h4>
+<p class="text-sm text-on-surface-variant max-w-xs leading-relaxed mb-8">
+                            Upload your <code class="bg-navy-deep px-1.5 py-0.5 rounded text-primary text-xs">Songs.db</code> to merge your presentation library.
+                        </p>
+<button class="px-8 py-2.5 bg-surface-container-highest border border-outline-variant text-on-surface font-status-label text-sm rounded-lg hover:bg-slate-surface transition-all">
+                            Select Database File
+                        </button>
+</div>
+</section>
+</div>
+</div>
+<!-- Tab 3: Account & System -->
+<div class="tab-content space-y-8" id="tab-account">
+<div class="max-w-4xl">
+<!-- Profile Section -->
+<section class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden mb-8">
+<div class="p-6 border-b border-outline-variant/30 flex items-center justify-between">
+<div class="flex items-center gap-6">
+<div class="w-20 h-20 rounded-full bg-slate-surface border-4 border-navy-deep overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAY86jw7A7EdBuXkTIvS7he5HZKys6MQw7hvXE_2xqKRZHIRDhVyD_OZ7bVofFarPYfVTHUsDDEfRNyXglVCuHu0cOsfEgA_M5mOkZgYpzqGU-OaB1EfnElSatZZFd2zKc-1VlPtAqrGh3UkmMq92JQu26MJQymyvBebOadvYlIgdvXVGjxspE6Vb5OgKd-fUmCHrN3DC9cl1vTV3mzlOeIHANf4kVZ363A2kr3WszushwvqKBs4VLsPA"/>
+</div>
+<div>
+<h3 class="font-bold text-2xl text-on-surface">Chief Operator</h3>
+<p class="text-on-surface-variant">admin@churchlive.org</p>
+</div>
+</div>
+<button class="px-4 py-2 border border-outline-variant rounded hover:bg-slate-surface transition-colors font-status-label text-sm">Edit Profile</button>
+</div>
+<div class="p-6 grid grid-cols-2 gap-8">
+<div>
+<span class="text-[10px] text-slate-muted uppercase font-mono-ui block mb-1">Organization</span>
+<p class="font-medium">Grace Community Fellowship</p>
+</div>
+<div>
+<span class="text-[10px] text-slate-muted uppercase font-mono-ui block mb-1">Account Level</span>
+<p class="font-medium text-primary">Enterprise License</p>
+</div>
+</div>
+</section>
+<!-- System Configs -->
+<section class="space-y-4">
+<h3 class="font-headline-md text-xl text-on-surface">System Configuration</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<button class="flex items-center justify-between p-4 bg-surface-container border border-outline-variant rounded-xl hover:bg-slate-surface transition-all group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">update</span>
+<div class="text-left">
+<p class="font-bold text-sm">Check for Updates</p>
+<p class="text-[10px] text-slate-muted">Last check: 2 hours ago</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-muted">chevron_right</span>
+</button>
+<button class="flex items-center justify-between p-4 bg-surface-container border border-outline-variant rounded-xl hover:bg-slate-surface transition-all group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">terminal</span>
+<div class="text-left">
+<p class="font-bold text-sm">View System Logs</p>
+<p class="text-[10px] text-slate-muted">Transcriptions, Errors, Syncs</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-muted">chevron_right</span>
+</button>
+<button class="flex items-center justify-between p-4 bg-surface-container border border-outline-variant rounded-xl hover:bg-slate-surface transition-all group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">settings_backup_restore</span>
+<div class="text-left">
+<p class="font-bold text-sm">Backup &amp; Restore</p>
+<p class="text-[10px] text-slate-muted">Manage config backups</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-muted">chevron_right</span>
+</button>
+<button class="flex items-center justify-between p-4 bg-surface-container border border-outline-variant rounded-xl hover:bg-slate-surface transition-all group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">security</span>
+<div class="text-left">
+<p class="font-bold text-sm">API Security</p>
+<p class="text-[10px] text-slate-muted">Keys and Permissions</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-muted">chevron_right</span>
+</button>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+<!-- Status Footer -->
+<footer class="fixed bottom-0 w-full h-16 bg-surface border-t border-outline-variant flex items-center justify-between px-8 z-50">
+<div class="flex items-center gap-8">
+<div class="flex flex-col">
+<span class="text-[10px] text-slate-muted uppercase font-mono-ui">Session Stability</span>
+<div class="flex gap-1 mt-1">
+<div class="w-6 h-1 bg-emerald-live rounded-full"></div>
+<div class="w-6 h-1 bg-emerald-live rounded-full"></div>
+<div class="w-6 h-1 bg-emerald-live rounded-full"></div>
+<div class="w-6 h-1 bg-emerald-live/30 rounded-full"></div>
+</div>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">storage</span>
+<span class="text-xs font-mono-ui uppercase">Buffer: 124ms</span>
+</div>
+<div class="flex items-center gap-2 text-emerald-live">
+<span class="material-symbols-outlined text-sm animate-pulse">cloud_done</span>
+<span class="text-xs font-mono-ui uppercase">Syncing to Display 01</span>
+</div>
+</div>
+<div class="flex gap-4">
+<button class="px-6 py-2 text-on-surface-variant font-status-label text-sm hover:text-on-surface transition-colors">Discard</button>
+<button class="px-8 py-2 bg-primary text-on-primary font-status-label text-sm rounded shadow-[0_0_20px_rgba(173,198,255,0.2)] hover:shadow-[0_0_30px_rgba(173,198,255,0.3)] transition-all">Save Changes</button>
+</div>
+</footer>
+<script>
+    function switchTab(tabId) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('btn-' + tabId).classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById('tab-' + tabId).classList.add('active');
+    }
+
+    // Initialize drag and drop feedback
+    const dropzone = document.querySelector('.border-dashed');
+    if (dropzone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => {
+                dropzone.classList.add('border-primary', 'bg-primary/5');
+            }, false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, () => {
+                dropzone.classList.remove('border-primary', 'bg-primary/5');
+            }, false);
+        });
+    }
+</script>
+</body></html>

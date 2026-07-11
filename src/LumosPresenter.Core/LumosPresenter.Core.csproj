@@ -1,0 +1,5 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure domain library: no package or project references, by design. -->
+
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LumosPresenter.Core\LumosPresenter.Core.csproj" />
+    <ProjectReference Include="..\LumosPresenter.Speech\LumosPresenter.Speech.csproj" />
+    <ProjectReference Include="..\LumosPresenter.Audio\LumosPresenter.Audio.csproj" />
+    <ProjectReference Include="..\LumosPresenter.Data\LumosPresenter.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

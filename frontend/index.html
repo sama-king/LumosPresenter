@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LumosPresenter</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Apply the stored theme before the deferred module script runs, so
+         first paint never flashes the wrong palette -->
+    <script>
+      document.documentElement.dataset.theme =
+        localStorage.getItem('lumos:theme') === 'light' ? 'light' : 'dark'
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

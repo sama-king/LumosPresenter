@@ -1,0 +1,233 @@
+@import 'tailwindcss';
+
+/* LumosPresenter design tokens — see docs/Design.md. Defaults are the dark
+   palette (the app targets dim production booths); html[data-theme='light']
+   below overrides the variables with the Design.md light palette. */
+@theme {
+  --color-*: initial;
+
+  /* Neutral foundation */
+  --color-navy-deep: #020617; /* always-dark projector surfaces; never themed */
+  --color-app-bg: #020617; /* app chrome background; flips with theme */
+  --color-surface: #0b1326;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container-lowest: #060e20;
+  --color-surface-container-low: #131b2e;
+  --color-surface-container: #171f33;
+  --color-surface-container-high: #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-surface-variant: #2d3449;
+  --color-slate-surface: #1e293b;
+  --color-slate-muted: #64748b;
+
+  /* On-colors */
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #c2c6d6;
+  --color-outline: #8c909f;
+  --color-outline-variant: #424754;
+
+  /* Command layer */
+  --color-primary: #adc6ff;
+  --color-primary-container: #4d8eff;
+  --color-on-primary: #002e6a;
+  --color-on-primary-container: #00285d;
+  /* Same in both palettes; for accents over always-dark preview surfaces */
+  --color-primary-fixed-dim: #adc6ff;
+
+  /* Semantic accents */
+  --color-secondary: #4edea3;
+  --color-tertiary: #ffb95f;
+  --color-emerald-live: #10b981;
+  --color-amber-warning: #f59e0b;
+  --color-rose-error: #f43f5e;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+
+  /* Typography: Display = Hanken Grotesk, Interface = Inter, Data = JetBrains Mono */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  /* Type scale (docs/Design.md) */
+  --text-display-live: 48px;
+  --text-display-live--line-height: 56px;
+  --text-display-live--letter-spacing: -0.02em;
+  --text-display-live--font-weight: 700;
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 40px;
+  --text-headline-lg--font-weight: 600;
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--font-weight: 600;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-status-label: 14px;
+  --text-status-label--line-height: 20px;
+  --text-status-label--letter-spacing: 0.05em;
+  --text-status-label--font-weight: 500;
+  --text-mono-ui: 12px;
+  --text-mono-ui--line-height: 16px;
+
+  --spacing-gutter: 16px;
+}
+
+html {
+  color-scheme: dark;
+}
+
+/* Light palette (docs/Design.md light-colors). Applies to ANY element marked
+   data-theme='light' — not just <html> — so a nested data-theme='dark' region
+   (the status footer, which must stay dark) can re-establish the dark values.
+   Tokens not listed here — navy-deep, white, black, slate-surface,
+   primary-fixed-dim — stay literal for always-dark projector/preview surfaces. */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --color-app-bg: #faf8ff;
+  --color-surface: #faf8ff;
+  --color-surface-dim: #d2d9f4;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-surface-variant: #dae2fd;
+
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #424754;
+  --color-outline: #727785;
+  --color-outline-variant: #c2c6d6;
+
+  --color-primary: #0058be;
+  --color-primary-container: #2170e4;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #fefcff;
+
+  --color-secondary: #006c49;
+  --color-tertiary: #825100;
+
+  /* Status accents: Design.md defines these only for dark; darkened for
+     legibility on light backgrounds */
+  --color-emerald-live: #047857;
+  --color-amber-warning: #b45309;
+  --color-rose-error: #be123c;
+  --color-slate-muted: #5b6472;
+}
+
+/* Restore the dark palette for regions pinned to dark regardless of app theme
+   (e.g. the status footer, which mirrors the projector booth). Mirrors the
+   @theme dark defaults so a data-theme='dark' inside a light page reads dark. */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-app-bg: #020617;
+  --color-surface: #0b1326;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container-lowest: #060e20;
+  --color-surface-container-low: #131b2e;
+  --color-surface-container: #171f33;
+  --color-surface-container-high: #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-surface-variant: #2d3449;
+
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #c2c6d6;
+  --color-outline: #8c909f;
+  --color-outline-variant: #424754;
+
+  --color-primary: #adc6ff;
+  --color-primary-container: #4d8eff;
+  --color-on-primary: #002e6a;
+  --color-on-primary-container: #00285d;
+
+  --color-secondary: #4edea3;
+  --color-tertiary: #ffb95f;
+
+  --color-emerald-live: #10b981;
+  --color-amber-warning: #f59e0b;
+  --color-rose-error: #f43f5e;
+  --color-slate-muted: #64748b;
+}
+
+/* "LumosPresenter" wordmark: a slow, subtle glow pulse in place of the old
+   status dot. Uses the primary accent so it re-tints per theme. */
+@keyframes wordmark-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 8px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+  50% {
+    text-shadow:
+      0 0 16px color-mix(in srgb, var(--color-primary) 65%, transparent),
+      0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent);
+  }
+}
+
+.wordmark-glow {
+  animation: wordmark-glow 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-glow {
+    animation: none;
+  }
+}
+
+/* Emerald outer glow marks the LIVE layer (Design.md: 20% opacity, no shadows elsewhere) */
+@utility live-glow {
+  box-shadow: 0 0 24px color-mix(in srgb, var(--color-emerald-live) 20%, transparent);
+}
+
+@utility primary-glow {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-app-bg font-sans text-on-surface antialiased;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 24;
+    user-select: none;
+  }
+}
+
+/* Slim scrollbars for the console panels */
+@layer components {
+  .panel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-container-highest) transparent;
+  }
+
+  .panel-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .panel-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-surface-container-highest);
+    border-radius: 3px;
+  }
+
+  .panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
