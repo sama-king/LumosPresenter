@@ -493,3 +493,7 @@ src/LumosPresenter.WebHost/media/
 
 # Local database + bundled translation seed files (downloaded)
 src/LumosPresenter.WebHost/data/
+
+# Runtime logs: the WebHost writes these beside its content root, and the launcher
+# writes its captured server output next to them.
+logs/
