@@ -98,7 +98,7 @@ public sealed class ReferenceParser
                 var hasCue = HasCueBefore(tokens, i);
                 var bookFactor = hasCue ? Math.Min(1.0, match.Factor * CueBoost) : match.Factor;
 
-                if (TryReadBody(tokens, match.NextIndex, match.Book, bookFactor, results, out var consumed))
+                if (TryReadBody(tokens, SkipBookSuffix(tokens, match.NextIndex), match.Book, bookFactor, results, out var consumed))
                 {
                     i = consumed;
                     continue;
@@ -203,7 +203,7 @@ public sealed class ReferenceParser
             pos += 2;
             structureFactor = 1.0;
         }
-        else if (TryReadVerseToken(tokens, pos, out var kwVerse, out var afterKwVerse))
+        else if (TryReadVerseToken(tokens, SkipVerseConnective(tokens, pos), out var kwVerse, out var afterKwVerse))
         {
             verseStart = kwVerse;
             pos = afterKwVerse;
@@ -272,7 +272,7 @@ public sealed class ReferenceParser
             var pos = afterChapter;
             int? verseStart = null;
             int? verseEnd = null;
-            if (TryReadVerseToken(tokens, pos, out var verse, out var afterVerse) && verse <= MaxVerse)
+            if (TryReadVerseToken(tokens, SkipVerseConnective(tokens, pos), out var verse, out var afterVerse) && verse <= MaxVerse)
             {
                 verseStart = verse;
                 pos = afterVerse;
@@ -458,13 +458,21 @@ public sealed class ReferenceParser
         return false;
     }
 
-    /// <summary>Matches "chapter N" or "N chapter" (spoken "the fifth chapter"). Advances past both tokens.</summary>
+    /// <summary>
+    /// Matches "chapter N" or "N chapter" (spoken "the fifth chapter"). Advances past both tokens.
+    /// The forward form tolerates an interposed filler ("chapter number 20"); the reversed form
+    /// does not — "number 20 chapter" is not real speech, and loosening it invites false positives.
+    /// </summary>
     private static bool TryReadChapterToken(List<Token> tokens, int pos, out int chapter, out int next)
     {
-        if (IsWord(tokens, pos, "chapter") && NumberAt(tokens, pos + 1, out chapter))
+        if (IsWord(tokens, pos, "chapter"))
         {
-            next = pos + 2;
-            return true;
+            var numberPos = SkipKeywordFiller(tokens, pos + 1);
+            if (NumberAt(tokens, numberPos, out chapter))
+            {
+                next = numberPos + 1;
+                return true;
+            }
         }
         if (NumberAt(tokens, pos, out chapter) && IsWord(tokens, pos + 1, "chapter"))
         {
@@ -476,13 +484,20 @@ public sealed class ReferenceParser
         return false;
     }
 
-    /// <summary>Matches "verse N" or "N verse". Advances past both tokens.</summary>
+    /// <summary>
+    /// Matches "verse N" or "N verse". Advances past both tokens. As with chapters, only the
+    /// forward form tolerates an interposed filler ("verse number 27").
+    /// </summary>
     private static bool TryReadVerseToken(List<Token> tokens, int pos, out int verse, out int next)
     {
-        if (IsVerseWord(tokens, pos) && NumberAt(tokens, pos + 1, out verse))
+        if (IsVerseWord(tokens, pos))
         {
-            next = pos + 2;
-            return true;
+            var numberPos = SkipKeywordFiller(tokens, pos + 1);
+            if (NumberAt(tokens, numberPos, out verse))
+            {
+                next = numberPos + 1;
+                return true;
+            }
         }
         if (NumberAt(tokens, pos, out verse) && IsVerseWord(tokens, pos + 1))
         {
@@ -529,6 +544,42 @@ public sealed class ReferenceParser
         _contextChapter = chapter;
         _windowRemaining = Math.Max(1, UtteranceWindow);
     }
+
+    /// <summary>
+    /// Skips a filler word that speakers insert between a chapter/verse keyword and its number
+    /// ("chapter number 20", "verse no. 27"). At most one, and only ever consumed when a number
+    /// follows — the callers re-check that, so nothing is swallowed from ordinary prose.
+    /// </summary>
+    private static int SkipKeywordFiller(List<Token> tokens, int pos) =>
+        IsWord(tokens, pos, "number", "numbers", "no") ? pos + 1 : pos;
+
+    /// <summary>
+    /// Skips connectives a speaker uses to link a chapter to its verse ("chapter 20, from verse
+    /// 27", "chapter 3 and verse 16"). Lookahead-and-commit: the skip only happens when a verse
+    /// keyword genuinely follows, so "chapter 20 from the pulpit" is untouched.
+    /// </summary>
+    private static int SkipVerseConnective(List<Token> tokens, int pos)
+    {
+        if (IsWord(tokens, pos, "from", "at", "in", "and", "starting", "beginning")
+            && IsVerseWord(tokens, pos + 1))
+        {
+            return pos + 1;
+        }
+        return pos;
+    }
+
+    /// <summary>
+    /// Skips an appositive that follows a spoken book name ("Saint Matthew's gospel, chapter 25").
+    /// Lookahead-and-commit like <see cref="SkipVerseConnective"/>: only skipped when chapter/verse
+    /// grammar genuinely follows, so prose ("Mark's gospel was written…") is untouched.
+    /// Only the gospel form needs this — letters put the book name last ("Paul's letter to the
+    /// Romans chapter 8"), which already parses.
+    /// </summary>
+    private static int SkipBookSuffix(List<Token> tokens, int pos) =>
+        IsWord(tokens, pos, "gospel", "gospels")
+        && (IsWord(tokens, pos + 1, "chapter") || IsVerseWord(tokens, pos + 1) || NumberAt(tokens, pos + 1, out _))
+            ? pos + 1
+            : pos;
 
     private static bool IsWord(List<Token> tokens, int index, params string[] words) =>
         index < tokens.Count && tokens[index].Kind == TokenKind.Word && words.Contains(tokens[index].Word);

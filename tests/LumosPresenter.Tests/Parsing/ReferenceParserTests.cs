@@ -83,6 +83,22 @@ public class ReferenceParserTests
     [InlineData("romans chapter eight verse twenty eight", "Romans 8:28")]
     [InlineData("genesis first chapter first verse", "Genesis 1:1")]
     [InlineData("john third chapter sixteenth verse", "John 3:16")]
+    // Filler between the keyword and its number: "verse number 27", "chapter number 20"
+    [InlineData("proverbs chapter 20 verse number 27", "Proverbs 20:27")]
+    [InlineData("john chapter number 3 verse number 16", "John 3:16")]
+    [InlineData("romans chapter eight verse number twenty eight", "Romans 8:28")]
+    // "X's gospel" — the appositive between the book name and its chapter must not block the read
+    [InlineData("Saint Mathews gospel, chapter number 25 verse 25", "Matthew 25:25")]
+    [InlineData("saint matthews gospel chapter 25 verse 25", "Matthew 25:25")]
+    [InlineData("st marks gospel chapter 1", "Mark 1")]
+    [InlineData("saint johns gospel chapter 3 verse 16", "John 3:16")]
+    [InlineData("lukes gospel 2:10", "Luke 2:10")]
+    // Connectives linking a chapter to its verse — one reference, not a chapter-only plus a verse
+    [InlineData("proverbs chapter 20, from verse 27", "Proverbs 20:27")]
+    [InlineData("proverbs chapter 20, from verse number 27", "Proverbs 20:27")]
+    [InlineData("proverbs chapter twenty from verse number twenty seven", "Proverbs 20:27")]
+    [InlineData("john chapter three and verse sixteen", "John 3:16")]
+    [InlineData("matthew chapter five starting verse three through twelve", "Matthew 5:3-12")]
     public void Parse_DetectsReference(string utterance, string expected)
     {
         Assert.Equal(expected, ParseSingle(utterance).ToString());
@@ -103,6 +119,11 @@ public class ReferenceParserTests
     [InlineData("point number two is important")]       // "number" singular — no fuzzy to Numbers
     [InlineData("we were numbered among them")]         // "numbered" — no fuzzy to Numbers
     [InlineData("look at all these numbers")]           // ambiguous word, no cue, no chapter/verse
+    // The connective skip is lookahead-gated: no verse keyword follows, so nothing is consumed
+    [InlineData("we finished the chapter and went home")]
+    // Same gate on the "gospel" suffix: prose about a gospel is not a reference
+    [InlineData("marks gospel was written for a roman audience")]
+    [InlineData("the gospel writers agree on this")]
     public void Parse_NonReference_ReturnsEmpty(string utterance)
     {
         Assert.Empty(new ReferenceParser().Parse(utterance));
@@ -112,6 +133,28 @@ public class ReferenceParserTests
     public void Parse_NullUtterance_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => new ReferenceParser().Parse(null!));
+    }
+
+    [Fact]
+    public void Parse_ChapterThenConnectiveVerse_AcrossUtterances()
+    {
+        var parser = new ReferenceParser();
+        Assert.Equal("Proverbs 20", parser.Parse("turn to proverbs chapter twenty")[0].ToString());
+        var refs = parser.Parse("and we'll read from verse number twenty seven");
+        Assert.Equal("Proverbs 20:27", Assert.Single(refs).ToString());
+    }
+
+    [Fact]
+    public void Parse_ResumesLapsedPassage_WithFillerAfterVerseKeyword()
+    {
+        // The filler-tolerant reader also gates post-decay resumption, so "verse number 13"
+        // revives the last passage exactly as a bare "verse 13" would.
+        var parser = new ReferenceParser { UtteranceWindow = 2 };
+        parser.Parse("john chapter three");
+        parser.Parse("filler one");
+        parser.Parse("filler two");
+        var refs = parser.Parse("let's continue to verse number thirteen");
+        Assert.Equal("John 3:13", Assert.Single(refs).ToString());
     }
 
     [Fact]
