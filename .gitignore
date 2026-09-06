@@ -494,8 +494,11 @@ src/LumosPresenter.WebHost/models/
 # Uploaded media for file transcription
 src/LumosPresenter.WebHost/media/
 
-# Local database + bundled translation seed files (downloaded)
-src/LumosPresenter.WebHost/data/
+# Local runtime database (regenerated from data/seed by the importer-adapter).
+# The bundled translation seed files in data/seed/ ARE tracked.
+src/LumosPresenter.WebHost/data/lumos.db
+src/LumosPresenter.WebHost/data/*.db-shm
+src/LumosPresenter.WebHost/data/*.db-wal
 
 # Runtime logs: the WebHost writes these beside its content root, and the launcher
 # writes its captured server output next to them.
