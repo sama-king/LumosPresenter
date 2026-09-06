@@ -5,6 +5,23 @@ export interface Translation {
   id: string
   name: string
   language: string
+  /**
+   * 'bundled' / 'easyworship' are stored locally and work with no internet; 'api.bible'
+   * is fetched on demand and cached, so uncached chapters need a connection.
+   */
+  source: string
+}
+
+/** True for translations whose text is held locally and always available offline. */
+export const isOfflineTranslation = (t: Translation) => t.source !== 'api.bible'
+
+/**
+ * State of the operator's api.bible key. The key itself never leaves the server; `hint`
+ * is only its last few characters, so the console can show which key is stored.
+ */
+export interface ApiBibleKeyStatus {
+  configured: boolean
+  hint: string | null
 }
 
 export interface StatusDto {
@@ -15,6 +32,8 @@ export interface StatusDto {
   recording: boolean
   lastRecording: string | null
   utteranceWindow: number
+  /** 0–1; the parser's gate for pushing a detection live without an operator. */
+  autoLiveConfidence: number
   translation: string
 }
 
@@ -88,12 +107,25 @@ export interface LiveItemDto {
   source: string
   at: string
   /** Which config block the display styles this with; 'scripture' for legacy/free-form pushes. */
-  kind: 'scripture' | 'song'
+  kind: 'scripture' | 'song' | 'media'
   /** Structured reference; null for free-form pushes (see LiveState.LiveItem). */
   book: string | null
   chapter: number | null
   verseStart: number | null
   verseEnd: number | null
+  /** Set only when kind is 'media': the media_library row the display should render. */
+  mediaId: string | null
+  mediaKind: 'image' | 'video' | null
+  /**
+   * Whether a media video repeats. A standalone clip loops; a queue member does not, so it
+   * can end and report back (see the 'mediaended' event) for the console to advance.
+   */
+  mediaLoop: boolean
+}
+
+/** SSE `mediaended` payload: the live-item id of the video that just finished playing. */
+export interface MediaEndedEvent {
+  id: string
 }
 
 /** SSE `live` event payload: a live item, or a clear marker. */
@@ -274,4 +306,35 @@ export interface EasyWorshipImportResult {
   imported: { id: number; title: string }[]
   skipped: string[]
   errors: { title: string; message: string }[]
+}
+
+// --- Media library (the /media tab's gallery) ---
+
+/**
+ * One gallery item. The file is linked, never copied: `sourcePath` is an absolute path on
+ * the machine running the server. `exists` is resolved server-side on every read, so a file
+ * moved or deleted behind the app's back shows an error thumbnail instead of a dead tile.
+ */
+export interface MediaLibraryItemDto {
+  id: string
+  sourcePath: string
+  kind: 'image' | 'video'
+  title: string
+  contentType: string
+  sortOrder: number
+  exists: boolean
+}
+
+/** Result of linking a batch of paths: each path succeeds or fails independently. */
+export interface AddMediaResult {
+  added: MediaLibraryItemDto[]
+  errors: { file: string; message: string }[]
+}
+
+/** One directory listing from the server-side file browser. */
+export interface BrowseResponse {
+  path: string
+  parent: string | null
+  directories: { name: string; path: string }[]
+  files: { name: string; path: string; kind: 'image' | 'video'; size: number }[]
 }

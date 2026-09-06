@@ -45,6 +45,7 @@ engine switching, and verse-text resolution per detected reference.
 | `Audio` | PortAudio capture, device enumeration, level metering |
 | `Data` | SQLite (Dapper): migrations, verse repository, scrollmapper importer, seeding |
 | `WebHost` | Composition root: Minimal API, SSE broadcaster, pipeline, media decode, session recorder |
+| `Launcher` | Avalonia desktop shell and entry point for the packaged app: starts the WebHost as a child process, then shows the logo, links to Control / Screen 1 / Screen 2 (copy or click to open) and a microphone picker — in a window and a system tray. Closing the window hides to tray so dismissing it never takes the displays down; tray **Quit** is the one action that stops the server, and only when this launcher started it (a separately-run WebHost is left alone). A **Start/Restart server** button recovers from a server that stopped or crashed, and **Show logs** opens `logs/` — the launcher captures the child's stdout, stderr and exit code there, which is what survives a native crash the server cannot log itself |
 | `frontend` | React + Vite (unstyled test UI — real UI is a later phase) |
 | `Tests` | xUnit: parser corpus, VAD, data layer, golden-audio engine integration |
 
@@ -58,7 +59,7 @@ engine switching, and verse-text resolution per detected reference.
 | `POST /api/engine/{name}` | switch `whisper` ↔ `sherpa-onnx` (restarts pipeline) |
 | `GET /api/whisper/models` · `POST /api/whisper/model` | list / hot-swap ggml models |
 | `POST /api/parser/window/{n}` | sticky-context utterance window (default 15) |
-| `GET /api/translations` · `POST /api/translation/{code}` | list / switch active translation |
+| `GET /api/translations` · `POST /api/translation/{code}` | list (each with `source`: `bundled` = offline, `api.bible` = fetched+cached) / switch active translation |
 | `GET /api/audio/devices` · `POST /api/audio/device` | input device picker |
 | `GET /api/audio/level` | live peak/RMS + clipping flag |
 | `POST /api/audio/recording/{bool}` · `GET /api/audio/recording/latest` | session WAV dump |
@@ -106,6 +107,11 @@ One-way, per the plan. Event types:
   mode can queue them for one-click operator approval before display.
 - **Large assets are gitignored and fetched**: speech models (`models/`), bible seeds
   (`data/seed/`), uploads (`media/`), the database itself (`data/`).
+- **Copyrighted scripture is never redistributed**: NIV/AMP/MSG are fetched per chapter
+  with the operator's own api.bible key and cached for a sliding 14 days
+  (see [database-architecture.md](database-architecture.md)). A resolved chapter warms
+  ±1 chapter in all three translations so switching mid-service never waits on the
+  network, and every failure degrades to cache rather than stalling the pipeline.
 
 ## Not yet built (from the plan)
 

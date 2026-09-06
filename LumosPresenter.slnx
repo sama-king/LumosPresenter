@@ -3,6 +3,7 @@
     <Project Path="src/LumosPresenter.Audio/LumosPresenter.Audio.csproj" />
     <Project Path="src/LumosPresenter.Core/LumosPresenter.Core.csproj" />
     <Project Path="src/LumosPresenter.Data/LumosPresenter.Data.csproj" />
+    <Project Path="src/LumosPresenter.Launcher/LumosPresenter.Launcher.csproj" />
     <Project Path="src/LumosPresenter.Speech/LumosPresenter.Speech.csproj" />
     <Project Path="src/LumosPresenter.WebHost/LumosPresenter.WebHost.csproj" />
   </Folder>

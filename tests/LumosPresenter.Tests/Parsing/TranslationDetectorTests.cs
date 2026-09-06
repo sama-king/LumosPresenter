@@ -51,6 +51,39 @@ public class TranslationDetectorTests
         Assert.Null(Seeded().Detect(utterance));
     }
 
+    // --- Single distinctive word: cue-gated, for names that reduce to one word ---
+
+    [Theory]
+    [InlineData("now let's take this from the amplified", "AMP")]
+    [InlineData("switch to the amplified", "AMP")]
+    [InlineData("reading from the amplified bible", "AMP")]
+    [InlineData("let's use the message here", "MSG")]
+    [InlineData("the message puts it this way", "MSG")]
+    public void SingleDistinctiveWord_MatchesWithCue(string utterance, string expected)
+    {
+        var detector = Detector(("AMP", "Amplified Bible"), ("MSG", "The Message"));
+        Assert.Equal(expected, detector.Detect(utterance));
+    }
+
+    [Theory]
+    [InlineData("her testimony was amplified by the choir")]
+    [InlineData("that message stayed with me all week")]
+    public void SingleDistinctiveWord_WithoutCue_DoesNotMatch(string utterance)
+    {
+        var detector = Detector(("AMP", "Amplified Bible"), ("MSG", "The Message"));
+        Assert.Null(detector.Detect(utterance));
+    }
+
+    [Theory]
+    [InlineData("let's use the new arrangement", "NIV", "New International Version")]
+    [InlineData("switch to the king of kings", "KJV", "King James Version")]
+    [InlineData("read from the american dream", "ASV", "American Standard Version")]
+    [InlineData("in the berean tradition", "BSB", "Berean Standard Bible")]
+    public void MultiWordName_DoesNotReduceToItsFirstWord(string utterance, string code, string name)
+    {
+        Assert.Null(Detector((code, name)).Detect(utterance));
+    }
+
     // --- Last mention wins ---
 
     [Fact]

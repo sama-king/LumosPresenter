@@ -17,6 +17,9 @@ public sealed class TranslationDetector
     /// <summary>Name suffixes too generic to identify a translation on their own.</summary>
     private static readonly string[] GenericSuffixes = ["version", "bible", "translation", "edition"];
 
+    /// <summary>Leading articles that carry no identifying weight ("The Message" → "Message").</summary>
+    private static readonly string[] Articles = ["the", "a"];
+
     private volatile List<Alias> _aliases = [];
 
     public bool IsConfigured => _aliases.Count > 0;
@@ -42,6 +45,26 @@ public sealed class TranslationDetector
                     break;
                 }
                 aliases.Add(new Alias(nameWords[..length], code, RequiresCue: false));
+            }
+
+            // How much of the name survives stripping trailing generic suffixes. Computed
+            // separately from the alias loop above, whose floor of two words stops early.
+            var trimmed = nameWords.Length;
+            while (trimmed > 1 && GenericSuffixes.Contains(nameWords[trimmed - 1]))
+            {
+                trimmed--;
+            }
+
+            // Names that reduce to a single distinctive word once leading articles and generic
+            // suffixes are stripped ("Amplified Bible" → "amplified", "The Message" → "message")
+            // are spoken that way in practice. That word alone is not distinctive enough for a
+            // bare mention, so it is cue-gated like the letter codes. Names still holding two
+            // or more words after trimming get no single-word alias — "New International
+            // Version" must never reduce to "new".
+            var start = trimmed > 1 && Articles.Contains(nameWords[0]) ? 1 : 0;
+            if (trimmed - start == 1)
+            {
+                aliases.Add(new Alias([nameWords[start]], code, RequiresCue: true));
             }
 
             // The letter code, spoken as one word ("KJV") or spelled out ("K J V") — cue-gated.

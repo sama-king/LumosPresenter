@@ -1,6 +1,7 @@
 using LumosPresenter.Core.Domain;
 using LumosPresenter.Core.Parsing;
 using LumosPresenter.Data;
+using LumosPresenter.Data.Remote;
 using LumosPresenter.Data.Migrations;
 using LumosPresenter.Data.Seeding;
 using Microsoft.Data.Sqlite;
@@ -31,7 +32,10 @@ public sealed class DataLayerTests : IDisposable
         var migrations = new MigrationRunner(_factory, NullLogger<MigrationRunner>.Instance);
         var importer = new ScrollmapperImporter(_factory, NullLogger<ScrollmapperImporter>.Instance);
         _initializer = new DatabaseInitializer(
-            _factory, migrations, importer, options, NullLogger<DatabaseInitializer>.Instance);
+            _factory, migrations, importer, new OfflineScriptureSource(),
+            new RemoteChapterCache(_factory, Options.Create(new ApiBibleOptions()), NullLogger<RemoteChapterCache>.Instance),
+            new SqliteAppSettings(_factory),
+            options, Options.Create(new ApiBibleOptions()), NullLogger<DatabaseInitializer>.Instance);
         _repository = new SqliteVerseRepository(_factory);
     }
 

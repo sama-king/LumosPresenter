@@ -1,6 +1,7 @@
 using LumosPresenter.Core.Abstractions;
 using LumosPresenter.Data.Importing;
 using LumosPresenter.Data.Migrations;
+using LumosPresenter.Data.Remote;
 using LumosPresenter.Data.Seeding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,9 +21,23 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationRunner>();
         services.AddSingleton<ScrollmapperImporter>();
         services.AddSingleton<DatabaseInitializer>();
-        services.AddSingleton<IVerseRepository, SqliteVerseRepository>();
+        services.AddSingleton<SqliteVerseRepository>();
+
+        // Remote translations (api.bible). The caching decorator wraps the local
+        // repository, so every existing caller — verse lookup, chapter preview, the
+        // translation re-push — transparently gains fetch-on-miss and prefetch.
+        services.Configure<ApiBibleOptions>(configuration.GetSection(ApiBibleOptions.SectionName));
+        // The api.bible key is the operator's, not the build's, so it lives in the database
+        // alongside their data rather than in configuration.
+        services.AddSingleton<IAppSettings, SqliteAppSettings>();
+        services.AddSingleton<RemoteChapterCache>();
+        services.AddHttpClient<IRemoteScriptureSource, ApiBibleScriptureSource>(
+            client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddSingleton<IVerseRepository, CachingVerseRepository>();
+        services.AddHostedService<CachePurgeService>();
         services.AddSingleton<IStageRepository, SqliteStageRepository>();
         services.AddSingleton<ISongRepository, SqliteSongRepository>();
+        services.AddSingleton<IMediaLibraryRepository, SqliteMediaLibraryRepository>();
         services.AddSingleton<EasyWorshipImporter>();
         return services;
     }

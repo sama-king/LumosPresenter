@@ -2,12 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { useServerEvent } from '../../lib/events'
 import { usePersistentState } from '../../lib/persistentState'
-import type { ChapterDto, ReferenceEvent, SearchResultDto, Translation } from '../../lib/types'
+import {
+  isOfflineTranslation,
+  type ApiBibleKeyStatus,
+  type ChapterDto,
+  type ReferenceEvent,
+  type SearchResultDto,
+  type Translation,
+} from '../../lib/types'
 import ContextPreview from './ContextPreview'
 import LiveQueue from './LiveQueue'
 import ResourcesBand from './ResourcesBand'
 import SearchPanel, { type HistoryItem } from './SearchPanel'
 import { AUTO_LIVE_THRESHOLD, composeLiveItems, type QueueItem } from './liveComposer'
+
+const ONLINE_SOURCES_KEY = 'lumos:online-sources'
 
 function timeNow() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -29,6 +38,17 @@ export default function ScripturePage() {
   const [history, setHistory] = usePersistentState<HistoryItem[]>('scripture.history', [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // The operator's toggle. Online sources are on by default, and the choice survives a
+  // reload, so localStorage rather than usePersistentState (which resets on refresh).
+  const [onlineWanted, setOnlineWanted] = useState(
+    () => localStorage.getItem(ONLINE_SOURCES_KEY) !== '0',
+  )
+  // Whether an api.bible key is stored on the server. Null while the first fetch is in
+  // flight, so the band can stay quiet instead of flashing "no key set".
+  const [apiKey, setApiKey] = useState<ApiBibleKeyStatus | null>(null)
+  // Online sources need both a key and the toggle: without a key the server has nothing
+  // to fetch with, so the translations must not be offered at all.
+  const onlineEnabled = apiKey?.configured === true && onlineWanted
 
   const selectionAnchor = useRef<number | null>(null)
   const lastAutoDisplay = useRef<string>('')
@@ -36,6 +56,44 @@ export default function ScripturePage() {
   // `translation` state, which updates optimistically on dropdown change so the
   // select doesn't snap back while the round-trip completes.
   const syncedTranslation = useRef<string>('')
+  // switchTranslation is declared further down; the toggle above needs it, so it is
+  // reached through a ref rather than reordering the callbacks.
+  const switchTranslationRef = useRef<((code: string) => void) | null>(null)
+  // Same reason: losing online sources — by the toggle or by the key being removed — has
+  // to move the console off a translation it can no longer resolve.
+  const fallBackToOfflineRef = useRef<(() => void) | null>(null)
+
+  const toggleOnline = useCallback(
+    (enabled: boolean) => {
+      setOnlineWanted(enabled)
+      localStorage.setItem(ONLINE_SOURCES_KEY, enabled ? '1' : '0')
+      if (!enabled) {
+        fallBackToOfflineRef.current?.()
+      }
+    },
+    [],
+  )
+
+  // Leaving the console on an online translation it can no longer serve would show an
+  // empty chapter on the next lookup, so drop to the first offline Bible instead.
+  const fallBackToOffline = useCallback(() => {
+    const active = translations.find(t => t.id === translation)
+    const fallback = translations.find(isOfflineTranslation)
+    if (active && !isOfflineTranslation(active) && fallback) {
+      switchTranslationRef.current?.(fallback.id)
+    }
+  }, [translation, translations])
+  fallBackToOfflineRef.current = fallBackToOffline
+
+  // The active translation is server-side state that outlives this console: a session can
+  // start with an online one selected and no key to serve it (removed on another machine,
+  // or a fresh install). Once both the key status and the translation list are known, move
+  // off it rather than letting lookups come back empty.
+  useEffect(() => {
+    if (apiKey !== null && !onlineEnabled && translations.length > 0) {
+      fallBackToOfflineRef.current?.()
+    }
+  }, [apiKey, onlineEnabled, translations])
 
   const showError = useCallback((message: string) => {
     setError(message)
@@ -43,6 +101,10 @@ export default function ScripturePage() {
   }, [])
 
   useEffect(() => {
+    void api
+      .getApiBibleKey()
+      .then(setApiKey)
+      .catch(() => setApiKey({ configured: false, hint: null }))
     void api
       .getTranslations()
       .then(data => {
@@ -193,6 +255,7 @@ export default function ScripturePage() {
     },
     [showError],
   )
+  switchTranslationRef.current = switchTranslation
 
   const pickSearchResult = useCallback(
     (result: SearchResultDto, options?: { goLive?: boolean }) => {
@@ -281,11 +344,17 @@ export default function ScripturePage() {
       ? liveItem.verses
       : []
 
+  // With online sources off the api.bible translations stay listed in the Bibles panel
+  // (greyed, so the toggle's effect is visible) but leave the picker entirely.
+  const selectableTranslations = onlineEnabled
+    ? translations
+    : translations.filter(isOfflineTranslation)
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <SearchPanel
-          translations={translations}
+          translations={selectableTranslations}
           currentTranslation={translation}
           history={history}
           onSwitchTranslation={switchTranslation}
@@ -317,6 +386,10 @@ export default function ScripturePage() {
         translations={translations}
         currentTranslation={translation}
         onSwitchTranslation={switchTranslation}
+        onlineEnabled={onlineEnabled}
+        onToggleOnline={toggleOnline}
+        onlineWanted={onlineWanted}
+        apiKey={apiKey}
       />
     </div>
   )

@@ -4,8 +4,12 @@ namespace LumosPresenter.WebHost.Realtime;
 /// One item shown on the projection displays. Book/Chapter/VerseStart/VerseEnd carry the
 /// structured reference so a translation switch can re-resolve the same passage; they are
 /// null for free-form pushes, which then simply keep their text across switches. Kind
-/// ('scripture' | 'song') tells the display which config block to style with; it defaults
-/// to 'scripture' so every existing push (auto-live pipeline, console) is unaffected.
+/// ('scripture' | 'song' | 'media') tells the display which config block to style with; it
+/// defaults to 'scripture' so every existing push (auto-live pipeline, console) is unaffected.
+/// MediaId/MediaKind are set only for 'media' pushes and name a media_library row, which the
+/// display fetches from /api/media/library/{id}/file. MediaLoop tells the display whether a
+/// video repeats: a standalone clip loops, but a queue member must be allowed to end so it can
+/// report back and let the console advance to the next video.
 /// </summary>
 public sealed record LiveItem(
     string Id,
@@ -18,7 +22,10 @@ public sealed record LiveItem(
     int? Chapter = null,
     int? VerseStart = null,
     int? VerseEnd = null,
-    string Kind = "scripture");
+    string Kind = "scripture",
+    string? MediaId = null,
+    string? MediaKind = null,
+    bool MediaLoop = true);
 
 /// <summary>
 /// The single source of truth for what is live on the displays. Every push —
@@ -52,7 +59,10 @@ public sealed class LiveState(EventBroadcaster broadcaster)
                 && current.Kind == item.Kind
                 && current.Reference == item.Reference
                 && current.Text == item.Text
-                && current.Translation == item.Translation)
+                && current.Translation == item.Translation
+                // Media pushes carry no text, so without the id every image would look like
+                // a duplicate of the last one and slideshow advance would silently stall.
+                && current.MediaId == item.MediaId)
             {
                 return;
             }

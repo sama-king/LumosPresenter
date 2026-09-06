@@ -1,6 +1,9 @@
 import type {
+  AddMediaResult,
+  ApiBibleKeyStatus,
   AudioDevice,
   AudioLevel,
+  BrowseResponse,
   ChapterDto,
   DisplayConfig,
   DisplayDto,
@@ -9,6 +12,7 @@ import type {
   FontDto,
   LiveItemDto,
   MediaAssetDto,
+  MediaLibraryItemDto,
   SaveSongBody,
   SearchResponse,
   SongDto,
@@ -59,12 +63,18 @@ export const api = {
     text: string
     translation: string
     source?: string
-    kind?: 'scripture' | 'song'
+    kind?: 'scripture' | 'song' | 'media'
     book?: string
     chapter?: number
     verseStart?: number
     verseEnd?: number
+    mediaId?: string
+    mediaKind?: 'image' | 'video'
+    mediaLoop?: boolean
   }) => request<LiveItemDto>('POST', '/api/live', item),
+  /** A display telling the server its non-looping video finished. Fire-and-forget. */
+  mediaEnded: (id: string) =>
+    request<{ accepted: boolean }>('POST', '/api/live/media/ended', { id }),
   getLive: () => request<LiveItemDto | undefined>('GET', '/api/live'),
   clearLive: () => request<void>('POST', '/api/live/clear'),
 
@@ -105,6 +115,33 @@ export const api = {
     return data as MediaAssetDto
   },
   deleteMedia: (id: string) => request<void>('DELETE', `/api/media/backgrounds/${id}`),
+
+  // Media library (the /media tab). Files are linked by absolute path, never uploaded —
+  // browseMedia is how the console gets a real path, since a browser file input hides it.
+  getMediaLibrary: () =>
+    request<{ items: MediaLibraryItemDto[] }>('GET', '/api/media/library'),
+  addMediaPaths: (paths: string[]) =>
+    request<AddMediaResult>('POST', '/api/media/library', { paths }),
+  deleteMediaLibraryItem: (id: string) => request<void>('DELETE', `/api/media/library/${id}`),
+  browseMedia: (path?: string) =>
+    request<BrowseResponse>(
+      'GET',
+      '/api/media/library/browse' + (path ? `?path=${encodeURIComponent(path)}` : ''),
+    ),
+
+  // The api.bible key is write-only: reads return whether one is set plus a masked hint.
+  getApiBibleKey: () => request<ApiBibleKeyStatus>('GET', '/api/settings/api-bible'),
+  setApiBibleKey: (key: string) =>
+    request<ApiBibleKeyStatus>('POST', '/api/settings/api-bible', { key }),
+  clearApiBibleKey: () => request<ApiBibleKeyStatus>('DELETE', '/api/settings/api-bible'),
+
+  setParserWindow: (utterances: number) =>
+    request<{ utteranceWindow: number }>('POST', `/api/parser/window/${utterances}`),
+  // Sent as a percentage so the URL carries no decimal point.
+  setAutoLiveConfidence: (percent: number) =>
+    request<{ autoLiveConfidence: number }>('POST', `/api/parser/confidence/${percent}`),
+  setEngine: (name: string) =>
+    request<void>('POST', `/api/engine/${encodeURIComponent(name)}`),
 
   getWhisperModels: () =>
     request<{ selected: string; models: string[] }>('GET', '/api/whisper/models'),

@@ -3,8 +3,10 @@ import AppShell from './components/shell/AppShell'
 import { EventStreamProvider } from './lib/events'
 import AdminPage from './pages/AdminPage'
 import DisplayPage from './pages/DisplayPage'
+import MediaPage from './pages/media/MediaPage'
 import StagePage from './pages/stage/StagePage'
 import ScripturePage from './pages/scripture/ScripturePage'
+import SettingsPage from './pages/settings/SettingsPage'
 import SongsPage from './pages/songs/SongsPage'
 
 export default function App() {
@@ -17,7 +19,9 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route path="/scripture" element={<ScripturePage />} />
           <Route path="/songs" element={<SongsPage />} />
+          <Route path="/media" element={<MediaPage />} />
           <Route path="/stage" element={<StagePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
         {/* Legacy engine/audio/media test console — no designed shell yet. */}
         <Route path="/admin" element={<AdminPage />} />

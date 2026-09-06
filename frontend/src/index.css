@@ -156,17 +156,21 @@ html {
   --color-slate-muted: #64748b;
 }
 
-/* "LumosPresenter" wordmark: a slow, subtle glow pulse in place of the old
-   status dot. Uses the primary accent so it re-tints per theme. */
+/* LumosCast lockup: a slow, subtle glow pulse in place of the old status dot.
+   Uses the primary accent so it re-tints per theme.
+
+   drop-shadow, not text-shadow: the header now shows the brand lockup as an
+   <img>, and text-shadow does nothing on a replaced element. Because the PNG
+   carries real alpha (see assets/brand/generate.py), drop-shadow traces the
+   ring and letterforms rather than the image's bounding box. */
 @keyframes wordmark-glow {
   0%,
   100% {
-    text-shadow: 0 0 8px color-mix(in srgb, var(--color-primary) 30%, transparent);
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 30%, transparent));
   }
   50% {
-    text-shadow:
-      0 0 16px color-mix(in srgb, var(--color-primary) 65%, transparent),
-      0 0 24px color-mix(in srgb, var(--color-primary) 35%, transparent);
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-primary) 65%, transparent))
+      drop-shadow(0 0 14px color-mix(in srgb, var(--color-primary) 35%, transparent));
   }
 }
 
@@ -229,5 +233,46 @@ html {
 
   .panel-scroll::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+/* Settings sliders — the glowing thumb from stitch_designs/refined_settings_console.
+   Range inputs cannot be styled through Tailwind utilities (the thumb is a vendor
+   pseudo-element), so the track and thumb are declared here. */
+@layer components {
+  .settings-range {
+    height: 6px;
+  }
+
+  .settings-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 10px var(--color-primary);
+    cursor: pointer;
+  }
+
+  .settings-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 10px var(--color-primary);
+    cursor: pointer;
+  }
+
+  .settings-range:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--color-on-surface);
+    outline-offset: 2px;
+  }
+
+  .settings-range:focus-visible::-moz-range-thumb {
+    outline: 2px solid var(--color-on-surface);
+    outline-offset: 2px;
   }
 }

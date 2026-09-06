@@ -35,6 +35,9 @@ const PLACEHOLDER: LiveItemDto = {
   chapter: 3,
   verseStart: 16,
   verseEnd: 16,
+  mediaId: null,
+  mediaKind: null,
+  mediaLoop: true,
 }
 
 /** No live media channel yet: show the window's placement, fill, and fit mode. */

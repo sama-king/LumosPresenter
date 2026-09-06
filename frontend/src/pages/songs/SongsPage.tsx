@@ -244,11 +244,8 @@ export default function SongsPage() {
         <SessionPanel
           session={session}
           selectedId={selected?.id ?? null}
-          onNewSong={newSong}
           onPickSession={pickSong}
           onGoLiveSession={goLiveSong}
-          onImported={() => void refreshLibrary()}
-          onError={showError}
         />
         {editing ? (
           <SongEditor
@@ -276,7 +273,10 @@ export default function SongsPage() {
         selectedId={selected?.id ?? null}
         onPickSong={pickSong}
         onGoLiveSong={goLiveSong}
+        onNewSong={newSong}
         onSearch={q => void refreshLibrary(q)}
+        onImported={() => void refreshLibrary()}
+        onError={showError}
       />
     </div>
   )

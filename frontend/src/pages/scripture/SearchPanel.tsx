@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from '../../components/Icon'
 import { api } from '../../lib/api'
-import type { SearchResultDto, Translation } from '../../lib/types'
+import { isOfflineTranslation, type SearchResultDto, type Translation } from '../../lib/types'
 
 export interface HistoryItem {
   reference: string
@@ -59,6 +59,10 @@ export default function SearchPanel({
   const [busy, setBusy] = useState(false)
   const [books, setBooks] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const offline = translations.filter(isOfflineTranslation)
+  const online = translations.filter(t => !isOfflineTranslation(t))
+
 
   useEffect(() => {
     void api
@@ -159,11 +163,24 @@ export default function SearchPanel({
             onChange={e => onSwitchTranslation(e.target.value)}
             className="w-full appearance-none rounded border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-body-md focus:border-primary focus:outline-none"
           >
-            {translations.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.id} — {t.name}
-              </option>
-            ))}
+            {/* Grouped so the offline-safe set is distinguishable when the list is open;
+                the closed select stays a plain label, with no source badge. */}
+            <optgroup label="Offline">
+              {offline.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.id} — {t.name}
+                </option>
+              ))}
+            </optgroup>
+            {online.length > 0 && (
+              <optgroup label="Online">
+                {online.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.id} — {t.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <Icon
             name="expand_more"

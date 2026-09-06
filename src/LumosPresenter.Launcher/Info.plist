@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Bundle metadata for the macOS .app. CFBundleIconFile is the only way to set the
+     dock icon: Avalonia cannot change it at runtime, so the icon appears once the
+     launcher is packaged by package-macos.sh rather than run from `dotnet run`. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>LumosCast</string>
+  <key>CFBundleDisplayName</key>
+  <string>LumosCast</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.lumospresenter.launcher</string>
+  <key>CFBundleExecutable</key>
+  <string>LumosPresenter.Launcher</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <!-- The launcher captures audio through the WebHost it starts, so the bundle is what
+       macOS prompts about. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>LumosCast listens to the service so it can follow spoken scripture references.</string>
+</dict>
+</plist>

@@ -22,6 +22,8 @@ interface Translation {
   id: string
   name: string
   language: string
+  /** 'bundled' / 'easyworship' work offline; 'api.bible' is fetched and cached. */
+  source: string
 }
 
 interface AudioDevice {
@@ -67,6 +69,9 @@ export default function AdminPage() {
   const [media, setMedia] = useState<{ id: string; name: string; playbackUrl: string } | null>(null)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [translations, setTranslations] = useState<Translation[]>([])
+  // Online translations exist as rows whether or not a key is stored; without one the
+  // server refuses them, so this console must not offer them either.
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false)
   const engineRef = useRef<HTMLSelectElement>(null)
   const deviceRef = useRef<HTMLSelectElement>(null)
   const modelRef = useRef<HTMLSelectElement>(null)
@@ -88,6 +93,10 @@ export default function AdminPage() {
       setSelectedModel(d.selected)
     })
     void fetch('/api/translations').then(r => r.json()).then(d => setTranslations(d.translations))
+    void fetch('/api/settings/api-bible')
+      .then(r => r.json())
+      .then((d: { configured: boolean }) => setApiKeyConfigured(d.configured))
+      .catch(() => setApiKeyConfigured(false))
 
     const events = new EventSource('/events')
     events.addEventListener('transcript', e => {
@@ -229,15 +238,19 @@ export default function AdminPage() {
 
   return (
     <main>
-      <h1>LumosPresenter — Operator Console</h1>
+      <h1>LumosCast — Operator Console</h1>
 
       <p>
         Listening: <b>{status ? String(status.listening) : '…'}</b> | Engine: <b>{status?.engine ?? '…'}</b>
         {' '}| Translation:{' '}
         <select value={status?.translation ?? ''} onChange={e => switchTranslation(e.target.value)}>
-          {translations.map(t => (
-            <option key={t.id} value={t.id}>{t.id} — {t.name}</option>
-          ))}
+          {translations
+            .filter(t => apiKeyConfigured || t.source !== 'api.bible')
+            .map(t => (
+              <option key={t.id} value={t.id}>
+                {t.id} — {t.name} {t.source === 'api.bible' ? '(online)' : '(offline)'}
+              </option>
+            ))}
         </select>
       </p>
       {pipelineError && <p>Error: {pipelineError}</p>}

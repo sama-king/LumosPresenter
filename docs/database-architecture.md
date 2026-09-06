@@ -23,8 +23,9 @@ live on disk; only their metadata will enter the database.
 translations (id, code UNIQUE, name, language, source, license, imported_at, content_version)
 books        (number PK, name, chapter_count)          -- canonical 66, synced from BookCatalog
 book_names   (translation_id, book_number, name)       -- per-translation display names
-verses       (translation_id, book_number, chapter, verse, text)
+verses       (translation_id, book_number, chapter, verse, text, span_end)
              -- composite PK, WITHOUT ROWID: range lookups ride the PK index
+             -- span_end (migration 005) is NULL for a normal verse; see remote translations
 display_history (id, shown_at, kind, reference, detail) -- kind-generic from day one
 ```
 
@@ -85,12 +86,105 @@ warning and skip (so tests and CI run without the ~14 MB of seed data).
 
 3 × 31,102 verses ≈ 14 MB database, seeded in seconds on first launch.
 
+## Remote translations — api.bible (migration 005)
+
+NIV, AMP and MSG are copyrighted, so they are **not** bundled. They are fetched per
+chapter from [api.bible](https://scripture.api.bible) and cached locally, which keeps the
+app's redistribution stance intact: only text the operator's own key retrieves is stored.
+
+```sql
+remote_chapters (translation_id, book_number, chapter, fetched_at, expires_at)
+```
+
+- **Verses land in the shared `verses` table**, with a `translations` row per remote code
+  (`source = 'api.bible'`). Every existing reader — verse lookup, chapter preview, the
+  translation re-push — therefore works unchanged, and the translation picker lists them
+  for free. `remote_chapters` tracks freshness only.
+- **`span_end` handles paraphrases.** The Message fuses verses into blocks (Romans 8's 39
+  verses become 11 spans; John 3:16 is part of a 16-18 block). Such a block is stored as
+  one row at its first verse with `span_end` set to its last, and the read predicate is an
+  overlap test rather than `BETWEEN`, so asking for any verse inside a block returns it.
+  Bundled rows keep `span_end` NULL and behave exactly as before.
+- **Caching is a sliding 14-day window.** `expires_at` is pushed forward on every
+  reference to a chapter, so text in active use is never re-fetched (scripture is
+  immutable) and unused text ages out. `DatabaseInitializer` purges expired chapters at
+  startup, deleting verses and the tracking row in one transaction so no orphaned verses
+  can be served.
+- **Prefetch:** resolving a chapter warms chapter ±1 in *all three* remote translations
+  (nine chapters), clamped to the book, so switching translation mid-service never waits
+  on the network. Only the chapter being displayed is awaited; the rest are background.
+  An in-flight guard stops the parser's sticky context from re-requesting on every
+  utterance.
+- **Degradation:** a cold miss is bounded by `ApiBible:BlockingTimeoutSeconds` (12s — the
+  first connection of a process pays DNS + TLS, measured just over 5s; warm requests are
+  ~1s) and the connection is warmed at startup so no operator request pays that cost.
+  Any failure falls back to whatever is cached rather than throwing, so a dead network
+  never stalls the transcription pipeline.
+- **Key:** stored in `app_settings` under `apiBible.key` and set from the Settings page, so each
+  installation supplies its own and can change it without a restart — the source reads it
+  per request rather than pinning it to the `HttpClient`'s default headers. With no key the
+  source reports itself unconfigured, every lookup stays local, and the UI refuses to offer
+  the online translations. `ApiBible:Key` (from a gitignored `.env`, or any normal
+  configuration source) survives only as a one-time seed: `DatabaseInitializer` adopts it
+  when the database has no key of its own, so clearing the key in the UI is never undone by
+  a stale `.env`.
+
+### `app_settings` (migration 006)
+
+Settings the operator owns rather than the build: a key/value table (`key`, `value`,
+`updated_at`) rather than a column per setting, since credentials and feature toggles
+arrive one at a time and none warrant a schema change. `SqliteAppSettings` loads the table
+once and keeps it in memory — `Get` is on the path of every remote chapter fetch — and
+writes update the database and the cache under one lock. Values are plain text: this is a
+local, single-operator database on the user's own machine, so encrypting against an
+attacker who already has the file would buy nothing. The key is never returned over the
+API; `GET /api/settings/api-bible` reports only `configured` and a masked last-four hint.
+
+## Media library (migration 007)
+
+`media_library` backs the Media tab's gallery. It is deliberately **not** `media_assets`
+(003), and the split is about ownership of the bytes:
+
+| | `media_assets` (003) | `media_library` (007) |
+| --- | --- | --- |
+| File location | copied into the WebHost `media/` dir, keyed by GUID | left where the operator put it |
+| Row identity | GUID + `file_ext` | absolute `source_path` (unique) |
+| Used for | per-display *backgrounds* | projected *content* |
+
+```sql
+media_library (id, source_path, kind, title, content_type, added_at, sort_order)
+```
+
+Because library files are linked rather than copied, a file the operator moves or deletes
+leaves a row pointing nowhere. Nothing scans for that in the background: `Exists` is
+resolved per read in `SqliteMediaLibraryRepository`, and the console renders a stale row as
+an error thumbnail. Deleting a gallery item unlinks the row and never touches the file.
+
+The unique index on `source_path` makes adding idempotent, so re-adding a file — or
+re-dropping a folder — updates nothing and duplicates nothing.
+
+Paths only ever originate server-side (`GET /api/media/library/browse`), because a browser
+cannot read a file's location from an input or a drop. `GET /api/media/library/{id}/file`
+resolves its path from the row alone and never from the query string, so a linked gallery
+does not become an arbitrary-file-read endpoint.
+
+Slideshows and video queues are *not* in the database: they are arrangements the operator
+builds per service, held in `localStorage` by the console alongside the schedule, and they
+reference gallery ids rather than paths.
+
+Because the server knows nothing about queues, queue auto-advance is a relay rather than a
+server-side playlist. A queue member is pushed with `mediaLoop: false`, so the display lets
+it end and posts `/api/live/media/ended` with the live-item id; the server confirms that id
+is what is actually live (rejecting a stale report from a display still showing an old item)
+and republishes it as a `mediaended` SSE event. The console advances on that and pushes the
+next video. Consecutive pushes carry a positioned reference (`clip (2/5)`) so the same file
+twice in a row is not mistaken for a duplicate and suppressed by `LiveState.Show`.
+
 ## Future media (approved design, deferred to a later migration)
 
 ```sql
 songs        (id, title, author, copyright, tags)
 song_sections(song_id, position, label, text)            -- Verse 1 / Chorus / ...
-media_assets (id, kind, path, title, duration_ms, tags)  -- files on disk, metadata here
 triggers     (id, phrase, target_kind, target_id, enabled)
 ```
 
@@ -107,6 +201,8 @@ further additive migration when the feature is needed.
   public identifier; integer PKs stay internal.
 - `SqliteStageRepository : IStageRepository` (Core interface) — displays + font registry;
   resolves follow links to effective configs and snapshots on detach/delete.
+- `SqliteMediaLibraryRepository : IMediaLibraryRepository` (Core interface) — the linked
+  media gallery; resolves `Exists` per read so stale paths surface in the console.
 - `TranslationState` (WebHost) — the active translation; default from
   `Data:DefaultTranslation`, switched via `POST /api/translation/{code}`, broadcast to
   clients as a `translation` SSE event.

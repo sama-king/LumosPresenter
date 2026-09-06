@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import VerseCanvas from '../components/VerseCanvas'
 import { api } from '../lib/api'
+import { mediaLibraryFileUrl } from '../lib/media'
 import { useServerEvent } from '../lib/events'
 import type { DisplayConfig, DisplayConfigEvent, FontDto, LiveEvent, LiveItemDto } from '../lib/types'
 
@@ -73,8 +74,55 @@ export default function DisplayPage() {
     return <main className="h-screen w-screen" />
   }
 
+  // Media is a picture, not text: it renders in its own viewport with the media config's
+  // fit and background rather than through VerseCanvas.
+  if (item?.kind === 'media' && item.mediaId) {
+    const { fit, backgroundColor, viewport } = config.media
+    const src = mediaLibraryFileUrl(item.mediaId)
+    return (
+      // relative: the viewport percentages below are anchored to this frame, not the page.
+      <main className="relative h-screen w-screen overflow-hidden">
+        <div
+          style={{
+            position: 'absolute',
+            left: `${viewport.x}%`,
+            top: `${viewport.y}%`,
+            width: `${viewport.width}%`,
+            height: `${viewport.height}%`,
+            backgroundColor,
+          }}
+        >
+          {item.mediaKind === 'video' ? (
+            // Autoplay needs muted. A standalone clip loops; a queue member does not, and
+            // instead reports back when it ends so the console can play the next one. Every
+            // display showing this item reports — the console de-duplicates by item id.
+            <video
+              key={item.mediaId}
+              src={src}
+              autoPlay
+              muted
+              loop={item.mediaLoop}
+              playsInline
+              onEnded={() => {
+                if (!item.mediaLoop) void api.mediaEnded(item.id).catch(() => {})
+              }}
+              style={{ width: '100%', height: '100%', objectFit: fit }}
+            />
+          ) : (
+            <img
+              key={item.mediaId}
+              src={src}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: fit }}
+            />
+          )}
+        </div>
+      </main>
+    )
+  }
+
   // Songs style with their own text block and carry no reference line; everything else
-  // (scripture, free-form pushes) uses the scripture config. Media runtime is future work.
+  // (scripture, free-form pushes) uses the scripture config.
   const isSong = item?.kind === 'song'
 
   return (

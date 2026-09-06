@@ -14,6 +14,14 @@ using LumosPresenter.WebHost.Api;
 using LumosPresenter.WebHost.Realtime;
 using Serilog;
 
+// The api.bible key now lives in the database, set from the console, so each user supplies
+// their own. A .env at the repository root is still read here purely as a development
+// convenience: on a database with no key yet it is adopted once (see DatabaseInitializer),
+// after which the stored key is authoritative. Both the binary's location and the working
+// directory are searched: neither alone survives every way the app is started (published
+// .app, launcher-spawned child, dotnet run).
+LumosPresenter.WebHost.DotEnv.Load(AppContext.BaseDirectory, Directory.GetCurrentDirectory());
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Media uploads are audio-only, but full-length sermon audio still runs large.
@@ -24,8 +32,24 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
     options.MultipartBodyLengthLimit = MaxUploadBytes;
 });
 
+// The file sink's path in configuration is relative to the content root, like the model
+// and database paths below — the app is started from several different working
+// directories (published .app, launcher-spawned child, dotnet run) and the logs have to
+// land in one predictable place for the launcher to show them.
 builder.Host.UseSerilog((context, loggerConfiguration) =>
-    loggerConfiguration.ReadFrom.Configuration(context.Configuration));
+{
+    // Found by sink name rather than by array index, so reordering or adding a sink in
+    // appsettings does not silently send the logs back to the working directory.
+    foreach (var sink in context.Configuration.GetSection("Serilog:WriteTo").GetChildren())
+    {
+        if (sink["Name"] != "File" || sink["Args:path"] is not { Length: > 0 } configured)
+        {
+            continue;
+        }
+        sink["Args:path"] = Path.GetFullPath(configured, context.HostingEnvironment.ContentRootPath);
+    }
+    loggerConfiguration.ReadFrom.Configuration(context.Configuration);
+});
 
 builder.Services.AddLumosData(builder.Configuration);
 builder.Services.AddLumosAudio();
@@ -61,6 +85,12 @@ var app = builder.Build();
 app.Services.GetRequiredService<LumosPresenter.Data.Seeding.DatabaseInitializer>().Initialize();
 app.Services.GetRequiredService<TranslationState>()
     .SetDefault(builder.Configuration.GetValue<string>("Data:DefaultTranslation") ?? "KJV");
+
+// Warm the api.bible connection so the first verse lookup does not pay the TLS handshake.
+if (app.Services.GetRequiredService<IVerseRepository>() is LumosPresenter.Data.Remote.CachingVerseRepository caching)
+{
+    caching.WarmUp();
+}
 
 // Apply the configured parser window at startup (default 15 if unset).
 var configuredWindow = builder.Configuration.GetValue<int?>("Parser:UtteranceWindow");
@@ -103,6 +133,7 @@ api.MapGet("/status", (
         recording = recorder.Enabled,
         lastRecording = recorder.LastRecordingPath is { } p ? Path.GetFileName(p) : null,
         utteranceWindow = pipeline.UtteranceWindow,
+        autoLiveConfidence = pipeline.AutoLiveConfidence,
         translation = translation.Current,
     }));
 
@@ -116,8 +147,20 @@ api.MapGet("/translations", async (IVerseRepository repository, TranslationState
     }));
 
 api.MapPost("/translation/{code}", async (
-    string code, TranslationState translation, IVerseRepository repository, CancellationToken ct) =>
+    string code, TranslationState translation, IVerseRepository repository,
+    IRemoteScriptureSource remote, CancellationToken ct) =>
 {
+    // Remote translations are seeded as rows whether or not a key exists, so without this
+    // guard they can be selected — from the operator console, or by voice — and then
+    // resolve to nothing. Refusing here covers every caller, not just the console's UI.
+    if (!remote.IsConfigured
+        && remote.Translations.Any(t => t.Id.Equals(code, StringComparison.OrdinalIgnoreCase)))
+    {
+        return Results.BadRequest(new
+        {
+            message = $"{code} is an online translation. Add an api.bible key to use it.",
+        });
+    }
     try
     {
         await translation.SelectAsync(code, repository, ct);
@@ -129,12 +172,64 @@ api.MapPost("/translation/{code}", async (
     }
 });
 
+// --- Online sources: the operator's own api.bible key ---
+//
+// The key is stored per installation, in the database, so each user supplies their own and
+// can change it without a rebuild or a restart. It is write-only over the API: a GET says
+// whether one is set and shows only its last four characters, so the console can report
+// state without ever handing the secret back to a browser.
+
+api.MapGet("/settings/api-bible", (IAppSettings settings) =>
+{
+    var key = settings.Get(AppSettingKeys.ApiBibleKey);
+    return Results.Ok(new
+    {
+        configured = !string.IsNullOrWhiteSpace(key),
+        hint = MaskKey(key),
+    });
+});
+
+api.MapPost("/settings/api-bible", (
+    ApiBibleKeyRequest request, IAppSettings settings, IVerseRepository repository) =>
+{
+    var key = request.Key?.Trim();
+    if (string.IsNullOrEmpty(key))
+    {
+        return Results.BadRequest(new { message = "Enter an api.bible key." });
+    }
+    settings.Set(AppSettingKeys.ApiBibleKey, key);
+    // A brand-new key means a cold connection; warm it now rather than making the
+    // operator's first lookup pay the TLS handshake.
+    if (repository is LumosPresenter.Data.Remote.CachingVerseRepository warm)
+    {
+        warm.WarmUp();
+    }
+    return Results.Ok(new { configured = true, hint = MaskKey(key) });
+});
+
+// Clearing the key is how an operator turns online sources off for good: with none set
+// the remote source reports itself unconfigured and every lookup stays local.
+api.MapDelete("/settings/api-bible", (IAppSettings settings) =>
+{
+    settings.Set(AppSettingKeys.ApiBibleKey, null);
+    return Results.Ok(new { configured = false, hint = (string?)null });
+});
+
 // How many utterances a detected book/chapter stays in context before it decays,
 // bridging pauses and filler between "Ephesians", "the fifth chapter", and "verse twelve".
 api.MapPost("/parser/window/{value:int}", (int value, TranscriptionPipeline pipeline) =>
 {
     pipeline.UtteranceWindow = value;
     return Results.Ok(new { utteranceWindow = pipeline.UtteranceWindow });
+});
+
+// How sure the parser must be before a detection goes live without an operator pushing it.
+// Sent as a percentage so the URL carries no decimal point; clamped to the same 0.5–1.0
+// band the settings slider offers, since a gate below half would fire on near-noise.
+api.MapPost("/parser/confidence/{percent:int}", (int percent, TranscriptionPipeline pipeline) =>
+{
+    pipeline.AutoLiveConfidence = Math.Clamp(percent, 50, 100) / 100.0;
+    return Results.Ok(new { autoLiveConfidence = pipeline.AutoLiveConfidence });
 });
 
 // --- Scripture lookup: synchronous search + chapter fetch for the operator console ---
@@ -210,23 +305,33 @@ api.MapGet("/scripture/chapter/{book}/{chapter:int}", async (
 //     parser (Core) is the single splitting truth shared with imports. ---
 
 api.MapSongs();
+api.MapMediaLibrary();
 
 // --- Live display channel: what the projection displays show right now ---
 
 api.MapPost("/live", (LiveRequest request, LiveState live) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Reference) || string.IsNullOrWhiteSpace(request.Text))
-    {
-        return Results.BadRequest(new { message = "Reference and text are required." });
-    }
-    if (request.Kind is not (null or "scripture" or "song"))
+    if (request.Kind is not (null or "scripture" or "song" or "media"))
     {
         return Results.BadRequest(new { message = $"Unknown live kind '{request.Kind}'." });
     }
+    // A media push is a picture, not a passage: it names a gallery item and carries no text,
+    // so only the text kinds are held to the reference/text requirement.
+    if (request.Kind == "media")
+    {
+        if (string.IsNullOrWhiteSpace(request.MediaId))
+        {
+            return Results.BadRequest(new { message = "A media id is required for a media push." });
+        }
+    }
+    else if (string.IsNullOrWhiteSpace(request.Reference) || string.IsNullOrWhiteSpace(request.Text))
+    {
+        return Results.BadRequest(new { message = "Reference and text are required." });
+    }
     var item = new LiveItem(
         Guid.NewGuid().ToString("N"),
-        request.Reference.Trim(),
-        request.Text.Trim(),
+        request.Reference?.Trim() ?? string.Empty,
+        request.Text?.Trim() ?? string.Empty,
         request.Translation,
         string.IsNullOrWhiteSpace(request.Source) ? "manual" : request.Source,
         DateTimeOffset.UtcNow,
@@ -234,13 +339,32 @@ api.MapPost("/live", (LiveRequest request, LiveState live) =>
         request.Chapter,
         request.VerseStart,
         request.VerseEnd ?? request.VerseStart,
-        request.Kind ?? "scripture");
+        request.Kind ?? "scripture",
+        request.MediaId,
+        request.MediaKind,
+        request.MediaLoop ?? true);
     live.Show(item);
     return Results.Ok(item);
 });
 
 api.MapGet("/live", (LiveState live) =>
     live.Current is { } item ? Results.Ok(item) : Results.NoContent());
+
+// A display reporting that its non-looping video finished. The console owns queue order, so
+// the server only relays: it confirms the report is about what is actually live (a display
+// showing a stale item must not advance anything) and republishes it as an SSE event for
+// whichever console is driving. Every display showing the item reports, so the console
+// de-duplicates by live-item id on its side.
+api.MapPost("/live/media/ended", (MediaEndedRequest request, LiveState live, EventBroadcaster broadcaster) =>
+{
+    var current = live.Current;
+    if (current is null || current.Kind != "media" || current.Id != request.Id)
+    {
+        return Results.Ok(new { accepted = false });
+    }
+    broadcaster.Publish(new PipelineEvent("mediaended", new { id = request.Id }));
+    return Results.Ok(new { accepted = true });
+});
 
 api.MapPost("/live/clear", (LiveState live) =>
 {
@@ -820,18 +944,28 @@ app.MapFallbackToFile("index.html");
 
 app.Run();
 
+// Shows enough of a stored key for the operator to recognise which one it is, without
+// echoing the secret back to the browser.
+static string? MaskKey(string? key) =>
+    string.IsNullOrWhiteSpace(key) ? null : "\u2026" + key.Trim()[^Math.Min(4, key.Trim().Length)..];
+
+internal sealed record ApiBibleKeyRequest(string? Key);
 internal sealed record SimulateRequest(string Text);
 internal sealed record SelectDeviceRequest(int? DeviceId);
 internal sealed record SelectModelRequest(string Model);
 internal sealed record LiveRequest(
-    string Reference,
-    string Text,
+    string? Reference,
+    string? Text,
     string Translation,
     string? Source,
     string? Book = null,
     int? Chapter = null,
     int? VerseStart = null,
     int? VerseEnd = null,
-    string? Kind = null);
+    string? Kind = null,
+    string? MediaId = null,
+    string? MediaKind = null,
+    bool? MediaLoop = null);
+internal sealed record MediaEndedRequest(string Id);
 internal sealed record CreateDisplayRequest(string? Name, int? UseSettingsOfDisplayId);
 internal sealed record SetDisplaySourceRequest(int? FollowsDisplayId);

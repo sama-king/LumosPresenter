@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { label: 'Stage', icon: 'layers', to: '/stage', enabled: true },
   { label: 'Scripture', icon: 'auto_stories', to: '/scripture', enabled: true },
   { label: 'Songs', icon: 'music_note', to: '/songs', enabled: true },
-  { label: 'Media', icon: 'folder_special', to: '/media', enabled: false },
+  { label: 'Media', icon: 'folder_special', to: '/media', enabled: true },
 ]
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
@@ -22,8 +22,16 @@ export default function AppHeader({ searchRef }: { searchRef?: React.Ref<HTMLInp
   return (
     <header className="sticky top-0 z-50 flex h-20 w-full shrink-0 items-center justify-between border-b border-surface-variant bg-app-bg px-gutter">
       <div className="flex items-center gap-8">
-        <h1 className="wordmark-glow font-display text-headline-md leading-none tracking-tight text-primary">
-          LumosPresenter
+        {/* The full lockup carries the app name, so no typed wordmark sits beside
+            it. The art is drawn for the ground it sits on — its ring and letterforms
+            are dark ink on light and white on dark — so the file swaps with the
+            theme rather than one image being tinted. */}
+        <h1 className="flex items-center">
+          <img
+            src={theme === 'dark' ? '/lockup-dark.png' : '/lockup-light.png'}
+            alt="LumosCast"
+            className="wordmark-glow h-9 w-auto shrink-0 select-none"
+          />
         </h1>
         <nav className="flex items-center gap-2">
           {NAV_ITEMS.map(item =>
@@ -83,13 +91,17 @@ export default function AppHeader({ searchRef }: { searchRef?: React.Ref<HTMLInp
           >
             <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={24} />
           </button>
-          <button
-            type="button"
+          <NavLink
+            to="/settings"
             title="Settings"
-            className="p-2 text-on-surface-variant transition-colors hover:text-primary"
+            className={({ isActive }) =>
+              `p-2 transition-colors hover:text-primary ${
+                isActive ? 'text-primary' : 'text-on-surface-variant'
+              }`
+            }
           >
             <Icon name="settings" size={24} />
-          </button>
+          </NavLink>
           <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-primary-container text-xs font-bold text-on-primary-container ring-2 ring-surface-variant">
             OP
           </div>

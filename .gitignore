@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+/assets/brand/source-lumospresenter-archive/
+stitch_designs/
+
 # User-specific files
 *.rsuser
 *.suo

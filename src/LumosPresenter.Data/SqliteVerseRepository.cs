@@ -11,11 +11,11 @@ public sealed class SqliteVerseRepository(SqliteConnectionFactory connectionFact
     public async Task<IReadOnlyList<Translation>> GetTranslationsAsync(CancellationToken cancellationToken = default)
     {
         using var connection = connectionFactory.Open();
-        var rows = await connection.QueryAsync<(string Code, string Name, string Language)>(
+        var rows = await connection.QueryAsync<(string Code, string Name, string Language, string Source)>(
             new CommandDefinition(
-                "SELECT code, name, language FROM translations ORDER BY code",
+                "SELECT code, name, language, source FROM translations ORDER BY code",
                 cancellationToken: cancellationToken));
-        return [.. rows.Select(r => new Translation(r.Code, r.Name, r.Language))];
+        return [.. rows.Select(r => new Translation(r.Code, r.Name, r.Language, r.Source))];
     }
 
     public async Task<IReadOnlyList<Verse>> GetVersesAsync(
@@ -34,6 +34,9 @@ public sealed class SqliteVerseRepository(SqliteConnectionFactory connectionFact
             : reference.VerseEnd ?? reference.VerseStart.Value;
 
         using var connection = connectionFactory.Open();
+        // Overlap test rather than a plain BETWEEN: a paraphrase (MSG) stores a fused
+        // block as one row spanning verse..span_end, and asking for any verse inside
+        // that span must return it. span_end is NULL for ordinary single verses.
         var rows = await connection.QueryAsync<(int Verse, string Text)>(
             new CommandDefinition("""
                 SELECT v.verse, v.text
@@ -42,7 +45,8 @@ public sealed class SqliteVerseRepository(SqliteConnectionFactory connectionFact
                 WHERE t.code = @Code
                   AND v.book_number = @BookNumber
                   AND v.chapter = @Chapter
-                  AND v.verse BETWEEN @VerseStart AND @VerseEnd
+                  AND v.verse <= @VerseEnd
+                  AND COALESCE(v.span_end, v.verse) >= @VerseStart
                 ORDER BY v.verse
                 """,
                 new
