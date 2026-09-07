@@ -9,6 +9,7 @@ import type {
   DisplayDto,
   DisplaysResponse,
   EasyWorshipImportResult,
+  EasyWorshipLibrary,
   FontDto,
   LiveItemDto,
   MediaAssetDto,
@@ -140,6 +141,9 @@ export const api = {
   // Sent as a percentage so the URL carries no decimal point.
   setAutoLiveConfidence: (percent: number) =>
     request<{ autoLiveConfidence: number }>('POST', `/api/parser/confidence/${percent}`),
+  // Sent in thousandths for the same reason as the confidence percentage above.
+  setVadThreshold: (thousandths: number) =>
+    request<{ vadThreshold: number }>('POST', `/api/speech/vad/threshold/${thousandths}`),
   setEngine: (name: string) =>
     request<void>('POST', `/api/engine/${encodeURIComponent(name)}`),
 
@@ -169,10 +173,27 @@ export const api = {
     }
     return data as SongImportResult
   },
-  importSongEasyWorship: async (file: File) => {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await fetch('/api/songs/import/easyworship', { method: 'POST', body: form })
+  /** Libraries the server found by itself, so the operator usually types nothing. */
+  detectEasyWorship: async () => {
+    const res = await fetch('/api/songs/import/easyworship/detect')
+    const raw = await res.text()
+    const data = raw ? (JSON.parse(raw) as unknown) : undefined
+    if (!res.ok) {
+      throw new Error((data as { message?: string })?.message ?? `Detect failed (${res.status})`)
+    }
+    return (data as { libraries: EasyWorshipLibrary[] }).libraries
+  },
+  /**
+   * Imports an EasyWorship library the server can reach on disk. The library is read in
+   * place rather than uploaded — it spans two files, one of which is routinely tens of
+   * megabytes. Omit the path to let the server use whatever it auto-detected.
+   */
+  importSongEasyWorship: async (path?: string) => {
+    const res = await fetch('/api/songs/import/easyworship', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path ?? null }),
+    })
     const raw = await res.text()
     const data = raw ? (JSON.parse(raw) as unknown) : undefined
     if (!res.ok) {

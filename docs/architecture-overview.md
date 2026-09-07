@@ -115,7 +115,8 @@ One-way, per the plan. Event types:
 
 ## Not yet built (from the plan)
 
-Confirm-mode queue and manual override · EasyWorship import · display history persistence ·
+Confirm-mode queue and manual override · EasyWorship *translation* import (the song import
+is built) · display history persistence ·
 duplicate suppression/upgrade logic on the display · engine bake-off harness with WER
 scoring · designed UI for Songs/Media/Settings (Scripture console and Stage configuration
 are built; the legacy test console lives at `/admin`) · image/motion display backgrounds

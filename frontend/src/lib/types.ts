@@ -35,6 +35,12 @@ export interface StatusDto {
   /** 0–1; the parser's gate for pushing a detection live without an operator. */
   autoLiveConfidence: number
   translation: string
+  /** RMS energy above which a frame counts as speech rather than room noise (0.001–0.1). */
+  vadThreshold: number
+  /** OS the server runs on — the console may be on a different machine. */
+  platform: 'windows' | 'macos' | 'linux'
+  /** Native Whisper runtime in use ("Vulkan", "Cpu", "CoreML"…), or null until a model loads. */
+  accelerator: string | null
 }
 
 export interface AudioLevel {
@@ -306,6 +312,18 @@ export interface EasyWorshipImportResult {
   imported: { id: number; title: string }[]
   skipped: string[]
   errors: { title: string; message: string }[]
+  /** Human-readable description of what was read, e.g. 'EasyWorship 2009 (Paradox)'. */
+  source: string
+}
+
+/**
+ * An EasyWorship library found on the machine running the server. `path` is the songs file
+ * to hand back when importing; `format` is 'paradox' (EasyWorship 2009) or 'firebird' (6/7).
+ */
+export interface EasyWorshipLibrary {
+  path: string
+  format: 'paradox' | 'firebird'
+  description: string
 }
 
 // --- Media library (the /media tab's gallery) ---
