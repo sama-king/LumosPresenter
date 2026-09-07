@@ -12,6 +12,12 @@
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.CoreML" Version="1.9.1" />
+    <!-- CoreML accelerates Whisper on Apple silicon; Windows had no equivalent, so it ran
+         on bare CPU, where small.en measured 3.9x slower than real time on a 15 W laptop
+         part and could never keep up with a live mic. Vulkan is the cross-vendor Windows
+         answer (Intel, AMD, NVIDIA). Whisper.net falls back to CPU where no Vulkan device
+         is present, so this is safe on machines without one. -->
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
 
 </Project>

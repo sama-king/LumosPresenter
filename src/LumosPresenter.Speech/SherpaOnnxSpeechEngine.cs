@@ -18,6 +18,29 @@ public sealed class SherpaOnnxSpeechEngine(IOptions<SpeechOptions> options) : IS
 
     public string Name => SpeechEngineNames.SherpaOnnx;
 
+    public string? ReadinessError
+    {
+        get
+        {
+            foreach (var path in ModelPaths)
+            {
+                if (!File.Exists(path))
+                {
+                    return MissingModelMessage(path);
+                }
+            }
+            return null;
+        }
+    }
+
+    private string[] ModelPaths =>
+        [_options.EncoderPath, _options.DecoderPath, _options.JoinerPath, _options.TokensPath];
+
+    private static string MissingModelMessage(string path) =>
+        $"sherpa-onnx model file not found at '{path}'. Download a streaming Zipformer " +
+        "(e.g. sherpa-onnx-streaming-zipformer-en-2023-06-26 from " +
+        "github.com/k2-fsa/sherpa-onnx releases) and set the Speech:SherpaOnnx paths.";
+
     public async IAsyncEnumerable<TranscriptSegment> TranscribeAsync(
         IAsyncEnumerable<AudioFrame> audio,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -78,14 +101,11 @@ public sealed class SherpaOnnxSpeechEngine(IOptions<SpeechOptions> options) : IS
             return;
         }
 
-        foreach (var path in new[] { _options.EncoderPath, _options.DecoderPath, _options.JoinerPath, _options.TokensPath })
+        foreach (var path in ModelPaths)
         {
             if (!File.Exists(path))
             {
-                throw new FileNotFoundException(
-                    $"sherpa-onnx model file not found at '{path}'. Download a streaming Zipformer " +
-                    "(e.g. sherpa-onnx-streaming-zipformer-en-2023-06-26 from " +
-                    "github.com/k2-fsa/sherpa-onnx releases) and set the Speech:SherpaOnnx paths.", path);
+                throw new FileNotFoundException(MissingModelMessage(path), path);
             }
         }
 

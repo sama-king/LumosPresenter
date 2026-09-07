@@ -48,6 +48,11 @@ composed via DI in `WebHost`.
 ## Development
 
 ```bash
+# Bundled translations (KJV, ASV, BSB) — run once per clone. Downloads ~14 MB into
+# src/LumosPresenter.WebHost/data/seed, which the WebHost imports on first start.
+# Without it the app starts but every scripture lookup comes back empty.
+dotnet run scripts/fetch-seed-bibles.cs
+
 # Backend (serves on http://0.0.0.0:5170)
 dotnet run --project src/LumosPresenter.WebHost
 

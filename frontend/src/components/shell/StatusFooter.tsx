@@ -32,21 +32,18 @@ function Waveform({ listening }: { listening: boolean }) {
   const [bars, setBars] = useState<number[]>(() => Array(BAR_COUNT).fill(4))
 
   useEffect(() => {
-    if (!listening) {
-      setBars(Array(BAR_COUNT).fill(4))
-      return
-    }
-    const timer = setInterval(() => {
-      void api
-        .getAudioLevel()
-        .then((level: AudioLevel) => {
-          const height = Math.max(4, Math.min(100, Math.round(level.rms * 300)))
-          setBars(prev => [...prev.slice(1), height])
-        })
-        .catch(() => {})
-    }, 150)
-    return () => clearInterval(timer)
+    if (!listening) setBars(Array(BAR_COUNT).fill(4))
   }, [listening])
+
+  // The server pushes the level on the stream this app already holds open. This used to
+  // poll /api/audio/level every 150 ms with no backoff, so an unreachable server left the
+  // requests piling up until the browser's connection pool was exhausted and the console
+  // could no longer load anything. A stream that goes quiet simply stops moving the bars.
+  useServerEvent<AudioLevel>('level', level => {
+    if (!listening) return
+    const height = Math.max(4, Math.min(100, Math.round(level.rms * 300)))
+    setBars(prev => [...prev.slice(1), height])
+  })
 
   return (
     <div className="flex h-6 w-48 items-end gap-[2px] overflow-hidden">
