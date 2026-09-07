@@ -500,3 +500,8 @@ src/LumosPresenter.WebHost/data/
 # Runtime logs: the WebHost writes these beside its content root, and the launcher
 # writes its captured server output next to them.
 logs/
+
+# EasyWorship background extraction staging (~224 MB of recovered stills). The
+# handful chosen to ship live in assets/backgrounds/ and are committed; this working
+# pile is reproducible from the EasyWorship library and is not.
+/assets/backgrounds-easyworship/
