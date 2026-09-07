@@ -34,6 +34,18 @@ const ALIGN: Record<TextDisplayConfig['horizontalAlign'], string> = {
 const MIN_FONT_PX = 12
 
 /**
+ * Song sections are written as separate lines and the operator lays them out that way in
+ * the editor and the live queue, so the projection has to honour those breaks too — HTML
+ * would otherwise collapse them into one run-on paragraph. `pre-line` keeps the newlines
+ * while still collapsing incidental double spaces and letting long lines wrap, which is
+ * what lyrics want; scripture has no newlines, so it renders identically to before.
+ *
+ * Shared with the offscreen measurer deliberately: the auto-fit search sizes text by
+ * measuring it, so if the two disagreed about line breaks the chosen size would be wrong.
+ */
+const VERSE_WHITE_SPACE = 'pre-line' as const
+
+/**
  * The single source of rendering truth for a text window: the projection surface
  * (DisplayPage) and the stage-config preview both render through it, so the preview
  * is WYSIWYG. All pixel values in the config are relative to a 1920-wide frame and
@@ -124,6 +136,7 @@ export default function VerseCanvas({
         letterSpacing: '0.05em',
         textTransform: 'uppercase',
         lineHeight: 'normal',
+        whiteSpace: 'normal',
       })
       measure.textContent = referenceLine
       reserved = measure.offsetHeight + 32 * scale
@@ -135,8 +148,14 @@ export default function VerseCanvas({
       letterSpacing: '-0.02em',
       textTransform: 'none',
       lineHeight: '1.2',
+      // Must match the rendered paragraph exactly: song sections carry their own line
+      // breaks, and measuring them collapsed would size the text for fewer lines than are
+      // actually drawn, overflowing the viewport.
+      whiteSpace: VERSE_WHITE_SPACE,
     })
-    measure.textContent = `“${item.text}”`
+    // Measures exactly what is drawn — no decoration around the text, so the fitted size
+    // matches the rendered paragraph.
+    measure.textContent = item.text
 
     const fits = (px: number) => {
       measure.style.fontSize = `${px}px`
@@ -228,9 +247,10 @@ export default function VerseCanvas({
               lineHeight: 1.2,
               letterSpacing: '-0.02em',
               color: text.textColor,
+              whiteSpace: VERSE_WHITE_SPACE,
             }}
           >
-            “{item.text}”
+            {item.text}
           </p>
           {!referenceAbove && referenceNode}
         </div>
