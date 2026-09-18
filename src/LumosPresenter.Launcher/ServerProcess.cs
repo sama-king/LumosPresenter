@@ -30,8 +30,16 @@ public enum ServerState
 /// background thread, or anything that goes wrong before logging is configured — Kestrel
 /// failing to bind the port, a missing model, a database that will not migrate.
 /// </summary>
-public sealed class ServerProcess(int port) : IDisposable
+/// <param name="port">Port the server binds and the launcher's links point at.</param>
+/// <param name="serverDirectory">
+/// Where to look for the WebHost executable. Defaults to beside this launcher, which is the
+/// only right answer in the packaged app. It is a parameter so tests can point it at a
+/// folder they control: what sits beside a test assembly depends on the test project's
+/// references, and a sibling WebHost there would be started for real.
+/// </param>
+public sealed class ServerProcess(int port, string? serverDirectory = null) : IDisposable
 {
+    private readonly string _serverDirectory = serverDirectory ?? AppContext.BaseDirectory;
     private Process? _process;
     // Serialises the writes from the stdout and stderr readers, which arrive on separate
     // threads, and from the lifecycle notes written on the UI thread.
@@ -192,15 +200,17 @@ public sealed class ServerProcess(int port) : IDisposable
         }
     }
 
-    /// <summary>The sibling WebHost executable, or null when it is not packaged alongside.</summary>
-    private static string? Executable()
+    /// <summary>The WebHost executable in the server directory, or null when it is not there.</summary>
+    private string? Executable()
     {
-        var name = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? "LumosPresenter.WebHost.exe"
-            : "LumosPresenter.WebHost";
-        var path = Path.Combine(AppContext.BaseDirectory, name);
+        var path = Path.Combine(_serverDirectory, ExecutableName);
         return File.Exists(path) ? path : null;
     }
+
+    /// <summary>The WebHost's file name on this OS: the apphost carries .exe only on Windows.</summary>
+    private static string ExecutableName => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? "LumosPresenter.WebHost.exe"
+        : "LumosPresenter.WebHost";
 
     /// <summary>
     /// Appends one captured line. Failing to write a log must never take the launcher

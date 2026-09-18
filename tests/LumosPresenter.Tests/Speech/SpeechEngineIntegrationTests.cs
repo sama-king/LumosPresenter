@@ -6,54 +6,48 @@ namespace LumosPresenter.Tests.Speech;
 /// <summary>
 /// Golden-audio tests: run a real recording ("after early nightfall the yellow lamps…")
 /// through each real engine and check the words survive. Seed of the Week-1 bake-off
-/// harness. Tests no-op when models are not downloaded (e.g. CI).
+/// harness.
+///
+/// The models are downloads, not repo content, so each test declares the files it needs and
+/// reports <b>Skipped</b> — naming them — on a machine without them, rather than passing
+/// having run nothing (see <see cref="RequiresFilesFactAttribute"/>). Note the golden WAV
+/// ships inside the sherpa-onnx download, so the Whisper test needs that folder too.
 /// </summary>
 public class SpeechEngineIntegrationTests
 {
-    private static readonly string ModelsDir = Path.Combine(
-        FindRepoRoot(), "src", "LumosPresenter.WebHost", "models");
-
-    private static readonly string GoldenWav = Path.Combine(ModelsDir, "sherpa-onnx", "test_wavs", "0.wav");
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "global.json")))
-        {
-            dir = dir.Parent!;
-        }
-        return dir?.FullName ?? throw new InvalidOperationException("Repository root not found.");
-    }
+    private const string Models = "src/LumosPresenter.WebHost/models/";
+    private const string GoldenWav = Models + "sherpa-onnx/test_wavs/0.wav";
+    private const string WhisperModel = Models + "whisper/ggml-base.en.bin";
+    private const string SherpaEncoder = Models + "sherpa-onnx/encoder.onnx";
+    private const string SherpaDecoder = Models + "sherpa-onnx/decoder.onnx";
+    private const string SherpaJoiner = Models + "sherpa-onnx/joiner.onnx";
+    private const string SherpaTokens = Models + "sherpa-onnx/tokens.txt";
 
     private static SpeechOptions CreateOptions() => new()
     {
         Whisper = new WhisperEngineOptions
         {
-            ModelPath = Path.Combine(ModelsDir, "whisper", "ggml-base.en.bin"),
+            ModelPath = TestPaths.FromRepoRoot(WhisperModel),
         },
         SherpaOnnx = new SherpaOnnxEngineOptions
         {
-            EncoderPath = Path.Combine(ModelsDir, "sherpa-onnx", "encoder.onnx"),
-            DecoderPath = Path.Combine(ModelsDir, "sherpa-onnx", "decoder.onnx"),
-            JoinerPath = Path.Combine(ModelsDir, "sherpa-onnx", "joiner.onnx"),
-            TokensPath = Path.Combine(ModelsDir, "sherpa-onnx", "tokens.txt"),
+            EncoderPath = TestPaths.FromRepoRoot(SherpaEncoder),
+            DecoderPath = TestPaths.FromRepoRoot(SherpaDecoder),
+            JoinerPath = TestPaths.FromRepoRoot(SherpaJoiner),
+            TokensPath = TestPaths.FromRepoRoot(SherpaTokens),
         },
     };
 
-    [Fact]
+    [RequiresFilesFact(GoldenWav, SherpaEncoder, SherpaDecoder, SherpaJoiner, SherpaTokens)]
     public async Task SherpaOnnx_TranscribesGoldenAudio()
     {
         var options = CreateOptions();
-        if (!File.Exists(GoldenWav) || !File.Exists(options.SherpaOnnx.EncoderPath))
-        {
-            return; // models not downloaded locally
-        }
 
         await using var engine = new SherpaOnnxSpeechEngine(
             Microsoft.Extensions.Options.Options.Create(options));
 
         var lastText = "";
-        await foreach (var segment in engine.TranscribeAsync(WavFrames(GoldenWav)))
+        await foreach (var segment in engine.TranscribeAsync(WavFrames(TestPaths.FromRepoRoot(GoldenWav))))
         {
             lastText = segment.Text;
         }
@@ -61,20 +55,16 @@ public class SpeechEngineIntegrationTests
         Assert.Contains("yellow lamps", lastText, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
+    [RequiresFilesFact(GoldenWav, WhisperModel)]
     public async Task Whisper_TranscribesGoldenAudio()
     {
         var options = CreateOptions();
-        if (!File.Exists(GoldenWav) || !File.Exists(options.Whisper.ModelPath))
-        {
-            return; // models not downloaded locally
-        }
 
         await using var engine = new WhisperSpeechEngine(
             Microsoft.Extensions.Options.Options.Create(options));
 
         var text = "";
-        await foreach (var segment in engine.TranscribeAsync(WavFrames(GoldenWav)))
+        await foreach (var segment in engine.TranscribeAsync(WavFrames(TestPaths.FromRepoRoot(GoldenWav))))
         {
             text += " " + segment.Text;
         }
