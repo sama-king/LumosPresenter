@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import Icon from '../../components/Icon'
 import type { MediaLibraryItemDto } from '../../lib/types'
 import ConfirmDialog from './ConfirmDialog'
-import MediaThumb from './MediaThumb'
+import MediaThumb from '../../components/MediaThumb'
 import { entryMediaIds, entryTitle, type ScheduleEntry } from './schedule'
 
 interface SchedulePanelProps {

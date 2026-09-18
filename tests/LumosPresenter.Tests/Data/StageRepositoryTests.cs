@@ -122,6 +122,28 @@ public sealed class StageRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfigWrittenBeforeTheAudioSetting_KeepsAudioOn()
+    {
+        var display = Assert.Single(await _repository.GetDisplaysAsync());
+        using (var connection = _factory.Open())
+        {
+            // A media block from before video had sound. Defaulting the missing flag to false
+            // would silence every display that was configured before the setting existed.
+            Dapper.SqlMapper.Execute(connection,
+                "UPDATE displays SET config_json = @Json WHERE id = @Id",
+                new
+                {
+                    display.Id,
+                    Json = System.Text.Json.JsonSerializer
+                        .Serialize(DisplayConfig.Default, System.Text.Json.JsonSerializerOptions.Web)
+                        .Replace(",\"audio\":true", string.Empty),
+                });
+        }
+
+        Assert.True((await _repository.GetDisplayAsync(display.Id))!.Config.Media.Audio);
+    }
+
+    [Fact]
     public async Task LegacyReferencePosition_ResetsToDefaultPosition()
     {
         var display = Assert.Single(await _repository.GetDisplaysAsync());

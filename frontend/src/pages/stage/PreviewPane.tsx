@@ -38,6 +38,7 @@ const PLACEHOLDER: LiveItemDto = {
   mediaId: null,
   mediaKind: null,
   mediaLoop: true,
+  revision: 0,
 }
 
 /** No live media channel yet: show the window's placement, fill, and fit mode. */

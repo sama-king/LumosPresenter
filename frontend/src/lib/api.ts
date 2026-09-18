@@ -12,6 +12,7 @@ import type {
   EasyWorshipLibrary,
   FontDto,
   LiveItemDto,
+  LiveSnapshotDto,
   MediaAssetDto,
   MediaLibraryItemDto,
   SaveSongBody,
@@ -72,12 +73,29 @@ export const api = {
     mediaId?: string
     mediaKind?: 'image' | 'video'
     mediaLoop?: boolean
+    /**
+     * Id to give the live item. The console names its own pushes so it recognises them when
+     * the 'live' event comes back — that event can arrive before this response does, so an
+     * id learned from the response would come too late.
+     */
+    id?: string
   }) => request<LiveItemDto>('POST', '/api/live', item),
   /** A display telling the server its non-looping video finished. Fire-and-forget. */
   mediaEnded: (id: string) =>
     request<{ accepted: boolean }>('POST', '/api/live/media/ended', { id }),
-  getLive: () => request<LiveItemDto | undefined>('GET', '/api/live'),
-  clearLive: () => request<void>('POST', '/api/live/clear'),
+  /** Console transport for the live video; every display mirrors what this sets. */
+  setMediaTransport: (body: {
+    itemId: string
+    playing: boolean
+    position: number
+    loop?: boolean
+    volume?: number
+    muted?: boolean
+  }) => request<{ accepted: boolean }>('POST', '/api/live/media/transport', body),
+  getLive: () => request<LiveSnapshotDto>('GET', '/api/live'),
+  /** 'text' removes the words but keeps the text window's background up; 'all' clears everything. */
+  clearLive: (scope: 'text' | 'all' = 'all') =>
+    request<void>('POST', `/api/live/clear?scope=${scope}`),
 
   startListening: () => request<void>('POST', '/api/listening/start'),
   stopListening: () => request<void>('POST', '/api/listening/stop'),

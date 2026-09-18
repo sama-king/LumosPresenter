@@ -3,7 +3,7 @@ import Icon from '../../components/Icon'
 import type { MediaLibraryItemDto } from '../../lib/types'
 import BrowseDialog from './BrowseDialog'
 import ContextMenu, { type MenuAction } from './ContextMenu'
-import MediaThumb from './MediaThumb'
+import MediaThumb from '../../components/MediaThumb'
 
 interface MediaGalleryBandProps {
   items: MediaLibraryItemDto[]

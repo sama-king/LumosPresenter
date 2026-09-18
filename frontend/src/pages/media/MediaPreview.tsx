@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import Icon from '../../components/Icon'
 import { mediaLibraryFileUrl } from '../../lib/media'
 import type { MediaLibraryItemDto } from '../../lib/types'
-import MediaThumb from './MediaThumb'
+import MediaThumb from '../../components/MediaThumb'
 import {
   entryMediaIds,
   entryTitle,

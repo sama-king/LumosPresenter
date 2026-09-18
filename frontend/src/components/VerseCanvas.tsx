@@ -15,6 +15,8 @@ interface VerseCanvasProps {
   reference?: ReferenceConfig | null
   fonts: FontDto[]
   item: LiveItemDto | null
+  /** Paint the window background even with no item — the state after a text-only clear. */
+  showBackground?: boolean
   className?: string
 }
 
@@ -52,8 +54,10 @@ const VERSE_WHITE_SPACE = 'pre-line' as const
  * scaled by the actual container width.
  *
  * Only the text viewport is painted (with the configured background); everything
- * outside — and the whole canvas when nothing is live — stays transparent, so the
- * display reads as alpha in OBS/compositing contexts.
+ * outside stays transparent, so the display reads as alpha in OBS/compositing contexts.
+ * With nothing live the whole canvas is transparent too — unless showBackground is set
+ * (the operator cleared only the text), in which case the empty window keeps its
+ * background, and a looping video carries on without restarting.
  *
  * Text auto-fits: text.fontSizePx is the MAXIMUM size, and a binary search against
  * an invisible measurer shrinks long passages until verse + reference fit the
@@ -64,6 +68,7 @@ export default function VerseCanvas({
   reference = null,
   fonts,
   item,
+  showBackground = false,
   className = '',
 }: VerseCanvasProps) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -218,7 +223,9 @@ export default function VerseCanvas({
         className="pointer-events-none invisible absolute left-0 top-0"
         style={{ whiteSpace: 'normal' }}
       />
-      {scale > 0 && item && (
+      {/* The window stays mounted across item → empty → item so its <video> background keeps
+          looping instead of restarting every time the text is cleared. */}
+      {scale > 0 && (item || showBackground) && (
         <div
           className="absolute flex flex-col overflow-hidden"
           style={{
@@ -237,21 +244,23 @@ export default function VerseCanvas({
         >
           <BackgroundLayer background={text.background} />
           {referenceAbove && referenceNode}
-          <p
-            style={{
-              position: 'relative', // above the media background layer
-              zIndex: 1,
-              fontFamily: verseFamily,
-              fontWeight: text.fontWeight,
-              fontSize: fitSize ?? text.fontSizePx * scale,
-              lineHeight: 1.2,
-              letterSpacing: '-0.02em',
-              color: text.textColor,
-              whiteSpace: VERSE_WHITE_SPACE,
-            }}
-          >
-            {item.text}
-          </p>
+          {item && (
+            <p
+              style={{
+                position: 'relative', // above the media background layer
+                zIndex: 1,
+                fontFamily: verseFamily,
+                fontWeight: text.fontWeight,
+                fontSize: fitSize ?? text.fontSizePx * scale,
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+                color: text.textColor,
+                whiteSpace: VERSE_WHITE_SPACE,
+              }}
+            >
+              {item.text}
+            </p>
+          )}
           {!referenceAbove && referenceNode}
         </div>
       )}

@@ -49,8 +49,18 @@ public sealed record SongsDisplayConfig(TextDisplayConfig Text);
 /// <summary>
 /// Media (image/video) target settings. Fit is 'cover' | 'contain';
 /// BackgroundColor fills the window when idle or letterboxing with 'contain'.
+///
+/// Audio decides whether video sound comes out of THIS display. The level itself is a console
+/// control that every display obeys (see MediaTransport), but only the screen actually wired to
+/// the speakers should emit it — with two displays both unmuted the room hears the clip twice,
+/// slightly apart. It defaults on so a single-display setup, which is most of them, just works;
+/// the operator turns it off on the confidence monitor or the second output.
 /// </summary>
-public sealed record MediaDisplayConfig(string Fit, string BackgroundColor, ViewportRect Viewport);
+public sealed record MediaDisplayConfig(
+    string Fit,
+    string BackgroundColor,
+    ViewportRect Viewport,
+    bool Audio = true);
 
 /// <summary>
 /// Per-display settings container: one independent config per content type (scripture, songs,

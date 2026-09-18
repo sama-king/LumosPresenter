@@ -358,6 +358,33 @@ export default function ConfigPanel({
         layout="row"
         onChange={backgroundColor => updateMedia({ backgroundColor })}
       />
+      <div className="flex items-center justify-between">
+        <SectionLabel icon="volume_up">Video Sound</SectionLabel>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={draft.media.audio}
+          onClick={() => updateMedia({ audio: !draft.media.audio })}
+          className={
+            draft.media.audio
+              ? 'relative h-5 w-9 rounded-full bg-emerald-live transition-colors'
+              : 'relative h-5 w-9 rounded-full bg-surface-variant transition-colors'
+          }
+        >
+          <span
+            className={
+              draft.media.audio
+                ? 'absolute left-4.5 top-0.5 h-4 w-4 rounded-full bg-white transition-all'
+                : 'absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-all'
+            }
+          />
+        </button>
+      </div>
+      <HelpText>
+        {draft.media.audio
+          ? 'Video sound plays out of this display, at the level set in the live panel. Turn it off on any display that is not the one wired to the speakers — two unmuted displays play the clip twice, slightly apart.'
+          : 'This display is silent. Video still plays; the sound comes from whichever display has this turned on.'}
+      </HelpText>
       <HelpText>
         Images and videos pushed live render inside this window. Drag the frame in the
         preview to move or resize it.

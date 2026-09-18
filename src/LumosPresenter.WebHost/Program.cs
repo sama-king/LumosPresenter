@@ -81,6 +81,7 @@ builder.Services.AddSingleton<TranslationState>();
 builder.Services.AddSingleton<LiveState>();
 builder.Services.AddSingleton<TranscriptionPipeline>();
 builder.Services.AddHostedService<AudioLevelPublisher>();
+builder.Services.AddHostedService<LiveSyncPublisher>();
 
 var app = builder.Build();
 
@@ -382,8 +383,19 @@ api.MapPost("/live", (LiveRequest request, LiveState live) =>
     {
         return Results.BadRequest(new { message = "Reference and text are required." });
     }
+    // The console may name the item it is pushing. It has to: it recognises its own pushes by
+    // id when the 'live' event comes back, and that event can beat the HTTP response to the
+    // browser — a console that had to wait for the response to learn the id would sometimes
+    // mistake its own push for someone else's and tear its queue down.
+    var id = string.IsNullOrWhiteSpace(request.Id)
+        ? Guid.NewGuid().ToString("N")
+        : request.Id.Trim();
+    if (id.Length > 64 || !id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+    {
+        return Results.BadRequest(new { message = "A live id must be 64 or fewer letters, digits, '-' or '_'." });
+    }
     var item = new LiveItem(
-        Guid.NewGuid().ToString("N"),
+        id,
         request.Reference?.Trim() ?? string.Empty,
         request.Text?.Trim() ?? string.Empty,
         request.Translation,
@@ -397,12 +409,28 @@ api.MapPost("/live", (LiveRequest request, LiveState live) =>
         request.MediaId,
         request.MediaKind,
         request.MediaLoop ?? true);
-    live.Show(item);
-    return Results.Ok(item);
+    return Results.Ok(live.Show(item));
 });
 
-api.MapGet("/live", (LiveState live) =>
-    live.Current is { } item ? Results.Ok(item) : Results.NoContent());
+// The whole live channel in one read: what is showing, how its video is playing, and the
+// revision both belong to. Displays call this on connect and whenever a heartbeat says they
+// are behind, so a missed event self-heals instead of freezing a screen.
+api.MapGet("/live", (LiveState live) => Results.Ok(live.Snapshot()));
+
+// Console transport for the live video. Playback is driven from the live panel and mirrored
+// by every display, so play/pause/seek land on all of them from one place rather than each
+// screen running its own copy at its own pace.
+api.MapPost("/live/media/transport", (MediaTransportRequest request, LiveState live) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ItemId))
+    {
+        return Results.BadRequest(new { message = "A live item id is required." });
+    }
+    var applied = live.SetTransport(
+        request.ItemId, request.Playing, request.Position, request.Loop, request.Volume, request.Muted);
+    // Not an error: the operator moved on between the click and the request landing.
+    return Results.Ok(new { accepted = applied });
+});
 
 // A display reporting that its non-looping video finished. The console owns queue order, so
 // the server only relays: it confirms the report is about what is actually live (a display
@@ -420,9 +448,15 @@ api.MapPost("/live/media/ended", (MediaEndedRequest request, LiveState live, Eve
     return Results.Ok(new { accepted = true });
 });
 
-api.MapPost("/live/clear", (LiveState live) =>
+// scope=text removes only the words and keeps the text window's background up; scope=all (the
+// default, so older callers keep their behaviour) leaves the displays fully transparent.
+api.MapPost("/live/clear", (string? scope, LiveState live) =>
 {
-    live.Clear();
+    if (scope is not (null or "all" or "text"))
+    {
+        return Results.BadRequest(new { message = $"Unknown clear scope '{scope}'." });
+    }
+    live.Clear(textOnly: scope == "text");
     return Results.Ok();
 });
 
@@ -1033,7 +1067,15 @@ internal sealed record LiveRequest(
     string? Kind = null,
     string? MediaId = null,
     string? MediaKind = null,
-    bool? MediaLoop = null);
+    bool? MediaLoop = null,
+    string? Id = null);
 internal sealed record MediaEndedRequest(string Id);
+internal sealed record MediaTransportRequest(
+    string ItemId,
+    bool Playing,
+    double Position,
+    bool? Loop,
+    double? Volume = null,
+    bool? Muted = null);
 internal sealed record CreateDisplayRequest(string? Name, int? UseSettingsOfDisplayId);
 internal sealed record SetDisplaySourceRequest(int? FollowsDisplayId);

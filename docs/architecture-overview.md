@@ -69,7 +69,9 @@ engine switching, and verse-text resolution per detected reference.
 | `POST /api/simulate` | typed utterance through the same parser + verse lookup |
 | `GET /api/scripture/search?q=` | synchronous reference parse + verse lookup (fresh parser, no live context) |
 | `GET /api/scripture/chapter/{book}/{chapter}[?translation=]` | full chapter for the Context Preview |
-| `POST /api/live` · `GET /api/live` · `POST /api/live/clear` | push / read / clear what the displays show (`LiveState`) |
+| `POST /api/live` · `GET /api/live` · `POST /api/live/clear` | push / read / clear what the displays show (`LiveState`); `GET` returns the whole channel — `{revision, item, transport}` — so a display can catch up in one read. The console names its own push via `id` so it recognises the event that comes back |
+| `POST /api/live/media/transport` | console play / pause / seek / loop for the live video; every display mirrors it |
+| `POST /api/live/media/ended` | a display reporting its non-looping clip finished, relayed as `mediaended` for the console to advance a video queue |
 | `GET /api/fonts` | font registry for the display font pickers (data-driven; future settings page can add fonts) |
 | `GET /api/displays` · `GET /api/displays/{id}` | list (with default config) / read displays with their effective config |
 | `POST /api/displays` | add display; optional `useSettingsOfDisplayId` creates a persistent follow link |
@@ -86,11 +88,26 @@ One-way, per the plan. Event types:
 - `reference` — `{display, book, chapter, verseStart, verseEnd, confidence, utterance, translation, text}`
 - `status` — `{listening, engine}` on pipeline state changes
 - `translation` — `{translation}` when the active translation switches
-- `live` — `{id, reference, text, translation, source, at}` (or `{cleared: true}`) — the
-  single channel displays render; fed by `POST /api/live` (manual) and the pipeline's
+- `live` — `{id, reference, text, translation, source, at}` (or
+  `{cleared: true, scope: 'text'|'all', backdrop}`) — the single channel displays render. A
+  `POST /api/live/clear?scope=text` clear removes only the words: `backdrop` (`'scripture'` |
+  `'songs'`) names the text config whose window background (solid, image or looping video)
+  stays up; `scope=all` (the default) leaves the displays fully transparent. Fed by `POST /api/live` (manual) and the pipeline's
   server-side confidence-gated auto flow (`Parser:AutoLiveConfidence`, default 0.75), so
   detections reach the displays regardless of which console page — if any — is open.
-  `LiveState` suppresses duplicate pushes (same reference/text/translation)
+  `LiveState` suppresses duplicate text pushes (same reference/text/translation); media is
+  exempt, since a media push carries no text to tell two of them apart and re-pushing the
+  current frame is how a clip restarts or a slideshow steps onto a repeated image. Every
+  event carries `revision`, which increases with every change to the channel
+- `mediatransport` — `{itemId, mediaId, playing, position, loop, at, revision}` — the console's
+  video clock. Displays never run their own playback: they seek and play to match this, which
+  is what keeps several screens together instead of each autoplaying its own copy
+- `mediaended` — `{id}` — a display's non-looping clip finished; the console advances its
+  video queue and collapses the reports from N displays into one advance
+- `livesync` — `{revision, itemId, transport}` every 3s (`LiveSyncPublisher`) — the heartbeat
+  that lets a surface notice it missed an event, since the fan-out drops the oldest event for
+  a slow client and a reconnecting `EventSource` replays nothing. A revision it never applied
+  sends it back to `GET /api/live`; a matching one still re-checks video drift
 - `displayconfig` — `{displayId, config}` when a display's stage configuration changes;
   followers of an edited display each get their own event, so open display windows
   restyle live by filtering on their id alone
@@ -105,6 +122,11 @@ One-way, per the plan. Event types:
   that no-op when models aren't downloaded.
 - **Confidence gates everything**: inferred detections score below 0.9 so a future confirm
   mode can queue them for one-click operator approval before display.
+- **One live queue for the whole console** (`frontend/src/lib/live.tsx`): only one thing is
+  on the displays at a time, so scripture, songs and media share a single queue and a single
+  live panel (`components/live/LivePanel.tsx`) rather than keeping one each. Video transport,
+  slideshow timing and queue advance are decided there — a clip sent from the media tab can
+  still be paused from the scripture tab, and the projection surfaces only ever follow.
 - **Large assets are gitignored and fetched**: speech models (`models/`), bible seeds
   (`data/seed/`), uploads (`media/`), the database itself (`data/`).
 - **Copyrighted scripture is never redistributed**: NIV/AMP/MSG are fetched per chapter

@@ -1,3 +1,4 @@
+import type { LiveSlide } from '../../lib/live'
 import type { ChapterDto } from '../../lib/types'
 
 /**
@@ -22,6 +23,18 @@ export interface QueueItem {
   verses: number[]
   translation: string
   source: 'manual' | 'auto'
+}
+
+/** A composed item as the shared live queue holds it. */
+export function toSlide(item: QueueItem): LiveSlide {
+  return { ...item, kind: 'scripture' }
+}
+
+/** The other direction: a scripture slide back to the shape this module composes with. */
+export function fromSlide(slide: LiveSlide): QueueItem | null {
+  if (slide.kind !== 'scripture') return null
+  const { kind: _kind, ...rest } = slide
+  return { ...rest, source: rest.source === 'auto' ? 'auto' : 'manual' }
 }
 
 export function formatReference(

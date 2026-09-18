@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\LumosPresenter.Audio\LumosPresenter.Audio.csproj" />
     <ProjectReference Include="..\..\src\LumosPresenter.Data\LumosPresenter.Data.csproj" />
     <ProjectReference Include="..\..\src\LumosPresenter.Launcher\LumosPresenter.Launcher.csproj" />
+    <ProjectReference Include="..\..\src\LumosPresenter.WebHost\LumosPresenter.WebHost.csproj" />
   </ItemGroup>
 
 </Project>

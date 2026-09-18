@@ -10,11 +10,18 @@ import {
   type SearchResultDto,
   type Translation,
 } from '../../lib/types'
+import LivePanel from '../../components/live/LivePanel'
+import { useLive } from '../../lib/live'
 import ContextPreview from './ContextPreview'
-import LiveQueue from './LiveQueue'
 import ResourcesBand from './ResourcesBand'
 import SearchPanel, { type HistoryItem } from './SearchPanel'
-import { AUTO_LIVE_THRESHOLD, composeLiveItems, type QueueItem } from './liveComposer'
+import {
+  AUTO_LIVE_THRESHOLD,
+  composeLiveItems,
+  fromSlide,
+  toSlide,
+  type QueueItem,
+} from './liveComposer'
 
 const ONLINE_SOURCES_KEY = 'lumos:online-sources'
 
@@ -28,13 +35,14 @@ function verseRange(start: number, end: number | null): number[] {
 }
 
 export default function ScripturePage() {
+  // The live queue is not this page's to own: one queue is shared with songs and media, so
+  // what the panel shows is what the displays show, whichever tab put it there.
+  const live = useLive()
   // Server list (re-fetched on mount). Everything below the divider is durable across nav.
   const [translations, setTranslations] = useState<Translation[]>([])
   const [translation, setTranslation] = usePersistentState('scripture.translation', '')
   const [chapter, setChapter] = usePersistentState<ChapterDto | null>('scripture.chapter', null)
   const [selectedVerses, setSelectedVerses] = usePersistentState<number[]>('scripture.selectedVerses', [])
-  const [queue, setQueue] = usePersistentState<QueueItem[]>('scripture.queue', [])
-  const [liveId, setLiveId] = usePersistentState<string | null>('scripture.liveId', null)
   const [history, setHistory] = usePersistentState<HistoryItem[]>('scripture.history', [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -152,28 +160,18 @@ export default function ScripturePage() {
     )
   }, [])
 
-  /** Sends one queue item to the displays and records it in session history. */
-  const pushLive = useCallback(
-    (item: QueueItem) => {
-      setLiveId(item.id)
-      recordHistory(item)
-      void api
-        .goLive({
-          reference: item.reference,
-          text: item.text,
-          translation: item.translation,
-          source: item.source,
-          // Structured reference so a translation switch can re-resolve the passage
-          // server-side (item.verses is always one contiguous run).
-          book: item.book,
-          chapter: item.chapter,
-          verseStart: item.verses[0],
-          verseEnd: item.verses[item.verses.length - 1],
-        })
-        .catch((err: Error) => showError(err.message))
-    },
-    [recordHistory, showError],
-  )
+  // Session history follows what actually went live rather than being written at each call
+  // site: a passage reaches the displays from the preview, the live panel, the search results
+  // and the voice pipeline, and only the live channel sees all four.
+  const lastRecorded = useRef<string | null>(null)
+  const liveSlide = live.liveSlide
+  useEffect(() => {
+    if (!liveSlide || liveSlide.kind !== 'scripture') return
+    if (lastRecorded.current === liveSlide.id) return
+    lastRecorded.current = liveSlide.id
+    const item = fromSlide(liveSlide)
+    if (item) recordHistory(item)
+  }, [liveSlide, recordHistory])
 
   /** Composes the selection into queue items and puts the first one on the displays. */
   const goLive = useCallback(
@@ -186,14 +184,18 @@ export default function ScripturePage() {
       if (!target || verses.length === 0) return
       const items = composeLiveItems(target, verses, source)
       if (items.length === 0) return
-      setQueue(items)
-      const live =
+      const chosen =
         liveVerse === undefined
           ? items[0]
           : (items.find(item => item.verses.includes(liveVerse)) ?? items[0])
-      pushLive(live)
+      live.setQueue({
+        slides: items.map(toSlide),
+        liveId: chosen.id,
+        origin: 'scripture',
+        title: `${target.book} ${target.chapter}`,
+      })
     },
-    [chapter, selectedVerses, pushLive],
+    [chapter, selectedVerses, live],
   )
 
   const toggleVerse = useCallback((verse: number, extendRange: boolean) => {
@@ -221,13 +223,14 @@ export default function ScripturePage() {
   const addToLive = useCallback(
     (verse: number) => {
       if (!chapter) return
-      const live = queue.find(item => item.id === liveId)
-      const sameChapter = live && live.book === chapter.book && live.chapter === chapter.chapter
-      const merged = sameChapter ? [...new Set([...live.verses, verse])] : [verse]
+      const current = live.liveSlide?.kind === 'scripture' ? live.liveSlide : null
+      const sameChapter =
+        current && current.book === chapter.book && current.chapter === chapter.chapter
+      const merged = sameChapter ? [...new Set([...current.verses, verse])] : [verse]
       setSelectedVerses(merged)
       goLive(chapter, merged, 'manual', verse)
     },
-    [chapter, queue, liveId, goLive],
+    [chapter, live.liveSlide, goLive],
   )
 
   const navigateChapter = useCallback(
@@ -286,11 +289,14 @@ export default function ScripturePage() {
     (target: ChapterDto, verses: number[]) => {
       const items = composeLiveItems(target, verses, 'auto')
       if (items.length === 0) return
-      setQueue(items)
-      setLiveId(items[0].id)
-      recordHistory(items[0])
+      live.adoptQueue({
+        slides: items.map(toSlide),
+        liveId: items[0].id,
+        origin: 'scripture',
+        title: `${target.book} ${target.chapter}`,
+      })
     },
-    [recordHistory],
+    [live],
   )
 
   // Voice pipeline detections: steer the preview; mirror confident ones into the queue.
@@ -316,29 +322,26 @@ export default function ScripturePage() {
     if (chapter) {
       void loadChapter(chapter.book, chapter.chapter, selectedVerses, event.translation)
     }
-    const live = queue.find(item => item.id === liveId)
-    if (!live) return
+    const current = live.liveSlide && fromSlide(live.liveSlide)
+    if (!current) return
     void api
-      .getChapter(live.book, live.chapter, event.translation)
+      .getChapter(current.book, current.chapter, event.translation)
       .then(fresh => {
-        const items = composeLiveItems(fresh, live.verses, live.source)
+        const items = composeLiveItems(fresh, current.verses, current.source)
         if (items.length === 0) return
-        const mirrored = items.find(item => item.verses.includes(live.verses[0])) ?? items[0]
-        setQueue(items)
-        setLiveId(mirrored.id)
-        recordHistory(mirrored)
+        const mirrored = items.find(item => item.verses.includes(current.verses[0])) ?? items[0]
+        live.adoptQueue({
+          slides: items.map(toSlide),
+          liveId: mirrored.id,
+          origin: 'scripture',
+          title: `${fresh.book} ${fresh.chapter}`,
+        })
       })
       .catch((err: Error) => showError(err.message))
   })
 
-  const clearAll = useCallback(() => {
-    setQueue([])
-    setLiveId(null)
-    void api.clearLive().catch((err: Error) => showError(err.message))
-  }, [showError])
-
   // Which verses of the currently-shown chapter are live on the displays.
-  const liveItem = queue.find(item => item.id === liveId)
+  const liveItem = live.liveSlide?.kind === 'scripture' ? live.liveSlide : null
   const liveVerses =
     liveItem && chapter && liveItem.book === chapter.book && liveItem.chapter === chapter.chapter
       ? liveItem.verses
@@ -374,13 +377,7 @@ export default function ScripturePage() {
           onAddToLive={addToLive}
           onGoLive={() => goLive()}
         />
-        <LiveQueue
-          queue={queue}
-          liveId={liveId}
-          onPickItem={pushLive}
-          onRemoveItem={id => setQueue(prev => prev.filter(item => item.id !== id))}
-          onClearAll={clearAll}
-        />
+        <LivePanel />
       </div>
       <ResourcesBand
         translations={translations}

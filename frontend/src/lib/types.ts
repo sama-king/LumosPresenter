@@ -127,15 +127,75 @@ export interface LiveItemDto {
    * can end and report back (see the 'mediaended' event) for the console to advance.
    */
   mediaLoop: boolean
+  /**
+   * Server-stamped and increasing with every change to the live channel. A surface that
+   * applied an older revision knows it missed something and re-reads /api/live.
+   */
+  revision: number
 }
+
+/**
+ * Playback state for the live video, owned by the operator console. Displays never run their
+ * own transport — they seek and play to match this, which is what keeps several screens
+ * together instead of each autoplaying its own copy.
+ *
+ * `position` is where the clip was at `at`; while `playing`, the real position is that plus
+ * the time elapsed since. Consumers anchor on local receipt time rather than the server clock
+ * (see mediaTransport.ts) so a display on another machine is not thrown by clock skew.
+ *
+ * `volume` / `muted` are the PROGRAM audio — what the room hears. Which displays actually emit
+ * it is theirs to say (MediaDisplayConfig.audio); the operator's monitoring at the desk is
+ * local to the console and never travels.
+ */
+export interface MediaTransportDto {
+  itemId: string
+  mediaId: string
+  playing: boolean
+  position: number
+  loop: boolean
+  at: string
+  volume: number
+  muted: boolean
+  revision: number
+}
+
+/** The whole live channel in one read: GET /api/live, and what a display catches up from. */
+export interface LiveSnapshotDto {
+  revision: number
+  item: LiveItemDto | null
+  transport: MediaTransportDto | null
+  /** Text config whose background stays up after a text-only clear; only read when item is null. */
+  backdrop?: LiveBackdrop | null
+}
+
+/**
+ * Which text window's background stays on the displays after a text-only clear. The words are
+ * gone but the window's solid / image / motion background remains, styled by this config.
+ */
+export type LiveBackdrop = 'scripture' | 'songs'
 
 /** SSE `mediaended` payload: the live-item id of the video that just finished playing. */
 export interface MediaEndedEvent {
   id: string
 }
 
-/** SSE `live` event payload: a live item, or a clear marker. */
-export type LiveEvent = LiveItemDto | { cleared: true }
+/**
+ * SSE `livesync` payload: the heartbeat that lets a surface notice it missed an event —
+ * because the fan-out dropped one under load, or because its EventSource reconnected.
+ */
+export interface LiveSyncEvent {
+  revision: number
+  itemId: string | null
+  transport: MediaTransportDto | null
+}
+
+/**
+ * SSE `live` event payload: a live item, or a clear marker. A 'text' clear keeps the backdrop
+ * named in the marker; an 'all' clear (backdrop null) leaves the displays fully transparent.
+ */
+export type LiveEvent =
+  | LiveItemDto
+  | { cleared: true; revision: number; scope: 'text' | 'all'; backdrop: LiveBackdrop | null }
 
 // --- Stage configuration (per-display styling of the live feed) ---
 
@@ -236,6 +296,12 @@ export interface MediaDisplayConfig {
   fit: 'cover' | 'contain'
   backgroundColor: string
   viewport: ViewportRect
+  /**
+   * Whether video sound comes out of THIS display. The level is a console control every
+   * display obeys; this says which screen is the one wired to the speakers, so a second
+   * output or a confidence monitor does not play the clip twice, slightly apart.
+   */
+  audio: boolean
 }
 
 /** The content types a display can render; each has its own config (and rail tab). */
