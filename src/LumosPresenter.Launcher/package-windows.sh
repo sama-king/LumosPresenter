@@ -29,16 +29,36 @@ dotnet publish "$REPO/src/LumosPresenter.WebHost/LumosPresenter.WebHost.csproj" 
   --self-contained -o "$OUT"
 
 # Speech models are content, not build output, so publish does not carry them; without
-# them the engine has nothing to load and listening never starts. Only the model the
-# config actually names is shipped: models/ on a dev machine holds several GB of spare
-# checkpoints, and the CoreML .mlmodelc bundles are macOS-only.
-MODEL="$(sed -n 's/.*"ModelPath": "\(.*\)".*/\1/p' "$REPO/src/LumosPresenter.WebHost/appsettings.json" | head -1)"
-if [ -n "$MODEL" ] && [ -f "$REPO/src/LumosPresenter.WebHost/$MODEL" ]; then
-  mkdir -p "$OUT/$(dirname "$MODEL")"
-  cp "$REPO/src/LumosPresenter.WebHost/$MODEL" "$OUT/$MODEL"
-  echo "copied speech model: $MODEL ($(du -h "$OUT/$MODEL" | cut -f1))"
-else
-  echo "warning: speech model '$MODEL' not found — listening will not start" >&2
+# them the engine has nothing to load and listening never starts.
+#
+# Two models ship, not one. The console lets an operator switch model without a rebuild,
+# so shipping only the configured default strands anyone who switches: the model they
+# pick has to already be beside the exe. tiny.en is the default (it runs on the weakest
+# machine we support) and base.en is the step up for better hardware. small.en and
+# medium.en are deliberately left out — together they are ~2 GB, and the CoreML
+# .mlmodelc bundles in models/ are macOS-only.
+DEFAULT_MODEL="$(sed -n 's/.*"ModelPath": "\(.*\)".*/\1/p' "$REPO/src/LumosPresenter.WebHost/appsettings.json" | head -1)"
+SHIP_MODELS="$DEFAULT_MODEL models/whisper/ggml-base.en.bin"
+
+copied_default=""
+for model in $SHIP_MODELS; do
+  [ -n "$model" ] || continue
+  # The default may already be base.en; do not copy the same file twice.
+  [ -f "$OUT/$model" ] && continue
+  if [ -f "$REPO/src/LumosPresenter.WebHost/$model" ]; then
+    mkdir -p "$OUT/$(dirname "$model")"
+    cp "$REPO/src/LumosPresenter.WebHost/$model" "$OUT/$model"
+    echo "copied speech model: $model ($(du -h "$OUT/$model" | cut -f1))"
+    [ "$model" = "$DEFAULT_MODEL" ] && copied_default=yes
+  else
+    echo "warning: speech model '$model' not found" >&2
+  fi
+done
+
+# The default is the one the app loads at startup; a miss there means listening never
+# starts, which is worse than an absent alternative and worth failing loudly for.
+if [ -z "$copied_default" ]; then
+  echo "warning: default model '$DEFAULT_MODEL' not shipped — listening will not start" >&2
 fi
 
 # The sherpa-onnx engine is the alternative Speech:Engine, and is small enough to ship
