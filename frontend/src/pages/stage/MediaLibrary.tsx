@@ -67,7 +67,7 @@ export default function MediaLibrary({
       {assets.length === 0 ? (
         <HelpText>No media yet — upload an image or video.</HelpText>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-3">
           {assets.map(asset => {
             const selected = asset.id === selectedId
             return (
@@ -75,7 +75,7 @@ export default function MediaLibrary({
                 key={asset.id}
                 type="button"
                 onClick={() => onSelect(asset)}
-                className="group w-24 shrink-0 space-y-2 text-left"
+                className="group min-w-0 space-y-2 text-left"
               >
                 <div
                   className={`relative flex aspect-video items-center justify-center overflow-hidden rounded border bg-surface-container-lowest transition-all ${
