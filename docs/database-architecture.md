@@ -178,6 +178,14 @@ API; `GET /api/settings/api-bible` reports only `configured` and a masked last-f
 | Row identity | GUID + `file_ext` | absolute `source_path` (unique) |
 | Used for | per-display *backgrounds* | projected *content* |
 
+`media_assets` also holds the **default backgrounds** that ship with the app
+(`source = 'bundled'`, id `bundled-<filename>`). `BundledBackgroundSeeder` copies them from
+the `backgrounds/` folder beside the exe into `media/` at startup, so they are served,
+selected and deleted exactly like an upload. The `media.bundledBackgrounds.seeded` app
+setting records every default ever registered — the rows alone cannot tell "never
+seeded" from "deleted by the operator", and only the first should be (re-)added. See
+[Default backgrounds](../README.md#default-backgrounds) for adding one.
+
 ```sql
 media_library (id, source_path, kind, title, content_type, added_at, sort_order)
 ```

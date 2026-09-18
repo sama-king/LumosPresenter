@@ -121,6 +121,35 @@ Both scripts publish the launcher and the WebHost into the *same* directory on p
 `ServerProcess` starts the server by looking for it beside its own executable, so a
 nested layout leaves the launcher up with no server behind it.
 
+Neither script builds the frontend — they publish whatever is already in
+`WebHost/wwwroot`. Run `npm run build` in `frontend/` first, or the package ships the
+console as it was at the last build, which can be older than the server beside it.
+
+### Default backgrounds
+
+The images in [`assets/backgrounds/`](assets/backgrounds/) ship with every package and
+appear in the Stage tab's background picker on first start. To change the set, change the
+folder — there is no other step:
+
+- **Add** a `.jpg`, `.png`, `.webp` or `.gif` (or a `.mp4`, `.webm` or `.mov` for a
+  looping motion background). Use lower-case extensions; the build matches on them.
+- **Name it for what it shows** — `mountain-lake-reflection.jpg` appears to the operator
+  as "Mountain Lake Reflection". The filename is also the background's permanent id, so
+  **do not rename one after it has shipped**: existing installs would get the renamed copy
+  as a new background alongside the old one.
+- **Prefer 1920×1080 or larger, landscape.** Anything smaller is upscaled on a projector.
+- **Rebuild the package** as above.
+
+This works because `LumosPresenter.WebHost.csproj` links the folder into build and publish
+output as `backgrounds/` beside the exe — so packaging picks it up without a script change
+— and `BundledBackgroundSeeder` registers each file at startup. On an existing install:
+
+| Change | Result on the operator's machine |
+|---|---|
+| File added to the folder | Appears after the update |
+| Operator deletes a default | Stays deleted; it is not re-added at the next start |
+| File removed from the folder | Stays on installs that already have it |
+
 To produce the installer, compile `package-windows.iss` with
 [Inno Setup 6](https://jrsoftware.org/isdl.php) **on Windows** (`iscc` does not run on
 macOS), which emits `artifacts/LumosCast-1.0.0-setup.exe`:

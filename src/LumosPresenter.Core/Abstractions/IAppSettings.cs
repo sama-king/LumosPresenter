@@ -29,4 +29,10 @@ public static class AppSettingKeys
     /// removes their key would otherwise have a stale .env re-adopted at every startup.
     /// </summary>
     public const string ApiBibleKeyAdopted = "apiBible.key.adopted";
+
+    /// <summary>
+    /// Comma-separated ids of every bundled background ever registered. It is what lets a
+    /// default the operator deleted stay deleted, instead of returning at the next startup.
+    /// </summary>
+    public const string BundledBackgroundsSeeded = "media.bundledBackgrounds.seeded";
 }
