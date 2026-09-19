@@ -15,11 +15,21 @@ public sealed class SqliteSongRepository(SqliteConnectionFactory connectionFacto
     {
         using var connection = connectionFactory.Open();
         var like = string.IsNullOrWhiteSpace(query) ? null : $"%{query.Trim()}%";
+        // Matches the title or any section's lyrics; title hits rank first, since that is
+        // usually what the operator means. Line breaks in lyrics compare as spaces so a phrase
+        // that wraps across lines still matches.
         var rows = await connection.QueryAsync<(int Id, string Title, string? Author)>(
             new CommandDefinition("""
                 SELECT id, title, author FROM songs
-                WHERE @Like IS NULL OR title LIKE @Like COLLATE NOCASE
-                ORDER BY title COLLATE NOCASE, id
+                WHERE @Like IS NULL
+                   OR title LIKE @Like COLLATE NOCASE
+                   OR EXISTS (
+                        SELECT 1 FROM song_sections
+                        WHERE song_id = songs.id
+                          AND replace(replace(text, char(13), ''), char(10), ' ') LIKE @Like COLLATE NOCASE)
+                ORDER BY
+                    CASE WHEN @Like IS NULL OR title LIKE @Like COLLATE NOCASE THEN 0 ELSE 1 END,
+                    title COLLATE NOCASE, id
                 """,
                 new { Like = like },
                 cancellationToken: cancellationToken));

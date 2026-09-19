@@ -129,7 +129,7 @@ export default function SongLibraryBand({
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search the library..."
+              placeholder="Search titles and lyrics..."
               spellCheck={false}
               autoComplete="off"
               className="w-full max-w-md rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-body-md placeholder:text-slate-muted focus:border-primary focus:outline-none"
