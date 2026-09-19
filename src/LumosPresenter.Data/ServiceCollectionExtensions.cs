@@ -36,6 +36,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVerseRepository, CachingVerseRepository>();
         services.AddHostedService<CachePurgeService>();
         services.AddSingleton<IStageRepository, SqliteStageRepository>();
+        // Runs after DatabaseInitializer (which Program.cs calls before the host starts), so
+        // the media_assets table exists by the time the shipped backgrounds are registered.
+        services.AddHostedService<BundledBackgroundSeeder>();
         services.AddSingleton<ISongRepository, SqliteSongRepository>();
         services.AddSingleton<IMediaLibraryRepository, SqliteMediaLibraryRepository>();
         services.AddSingleton<EasyWorshipImporter>();

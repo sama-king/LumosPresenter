@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import Icon from '../../components/Icon'
+import { api } from '../../lib/api'
 import type { MediaLibraryItemDto } from '../../lib/types'
 import BrowseDialog from './BrowseDialog'
 import ContextMenu, { type MenuAction } from './ContextMenu'
-import MediaThumb from './MediaThumb'
+import MediaThumb from '../../components/MediaThumb'
 
 interface MediaGalleryBandProps {
   items: MediaLibraryItemDto[]
@@ -49,6 +50,7 @@ export default function MediaGalleryBand({
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [tab, setTab] = useState<Tab>('image')
   const [browsing, setBrowsing] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null)
   const anchorRef = useRef<string | null>(null)
@@ -94,6 +96,24 @@ export default function MediaGalleryBand({
     const ids = inSelection ? selectedIds : [item.id]
     if (!inSelection) onSelectionChange([item.id])
     setMenu({ x: e.clientX, y: e.clientY, ids })
+  }
+
+  /**
+   * "Add from Disk" opens the system file dialog — the server shows it, since only the server
+   * can get real paths back. A console on another machine can't use that (the dialog would
+   * open on the server's screen), so the server says so and we fall back to the in-console
+   * browser.
+   */
+  const addFromDisk = () => {
+    setPicking(true)
+    api
+      .pickMediaFiles(tab)
+      .then(result => {
+        if (!result.available) setBrowsing(true)
+        else if (result.paths.length > 0) onAddPaths(result.paths)
+      })
+      .catch((err: Error) => onError(err.message))
+      .finally(() => setPicking(false))
   }
 
   /**
@@ -199,7 +219,8 @@ export default function MediaGalleryBand({
           )}
           <button
             type="button"
-            onClick={() => setBrowsing(true)}
+            onClick={addFromDisk}
+            disabled={picking}
             className="flex items-center gap-2 rounded border border-outline-variant bg-surface-container px-3 py-1.5 font-mono text-status-label uppercase text-on-surface transition-colors hover:border-primary hover:text-primary"
           >
             <Icon name="add" size={18} />

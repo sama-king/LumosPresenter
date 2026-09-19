@@ -8,6 +8,9 @@ interface SongLibraryBandProps {
   selectedId: number | null
   onPickSong: (id: number) => void
   onGoLiveSong: (id: number) => void
+  /** Ids already in the session history, so their add button reads as done. */
+  sessionIds: Set<number>
+  onAddToSession: (song: SongSummaryDto) => void
   onNewSong: () => void
   onSearch: (query: string) => void
   /** Re-fetch the library after an import. */
@@ -28,6 +31,8 @@ export default function SongLibraryBand({
   selectedId,
   onPickSong,
   onGoLiveSong,
+  sessionIds,
+  onAddToSession,
   onNewSong,
   onSearch,
   onImported,
@@ -37,7 +42,6 @@ export default function SongLibraryBand({
   const [query, setQuery] = useState('')
   const [importing, setImporting] = useState(false)
   const txtRef = useRef<HTMLInputElement>(null)
-  const ewRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const handle = window.setTimeout(() => onSearch(query.trim()), 200)
@@ -70,14 +74,34 @@ export default function SongLibraryBand({
     }
   }
 
-  const handleEasyWorship = async (file: File) => {
+  /**
+   * Imports the operator's EasyWorship library. Detection runs first so the usual case is a
+   * single click: EasyWorship records its data directory in a profile file, and the server
+   * reads the library straight off disk. Only when nothing is found do we ask for a path.
+   */
+  const handleEasyWorship = async () => {
     setImporting(true)
     try {
-      const result = await api.importSongEasyWorship(file)
+      const libraries = await api.detectEasyWorship()
+      let path = libraries[0]?.path
+      if (!path) {
+        const typed = window.prompt(
+          'No EasyWorship library found automatically.\n\n' +
+            'Enter the path to your EasyWorship "Databases\\Data" folder:',
+          '',
+        )
+        if (typed === null || typed.trim() === '') return
+        path = typed.trim()
+      }
+
+      const result = await api.importSongEasyWorship(path)
       onImported()
-      const parts = [`${result.imported.length} imported`]
+
+      const parts = [`${result.imported.length} imported from ${result.source}`]
       if (result.skipped.length > 0) parts.push(`${result.skipped.length} already in library`)
       if (result.errors.length > 0) parts.push(`${result.errors.length} failed`)
+      // There is no success channel here, so anything short of a clean run is surfaced as a
+      // notice rather than passing silently.
       if (result.skipped.length > 0 || result.errors.length > 0) onError(parts.join(', '))
     } catch (err) {
       onError((err as Error).message)
@@ -110,27 +134,28 @@ export default function SongLibraryBand({
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search the library..."
+              placeholder="Search titles and lyrics..."
               spellCheck={false}
               autoComplete="off"
               className="w-full max-w-md rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-body-md placeholder:text-slate-muted focus:border-primary focus:outline-none"
             />
             {songs.length === 0 ? (
               <p className="font-mono text-mono-ui italic text-slate-muted">
-                No songs yet. Create one or import a .txt / EasyWorship file.
+                No songs yet. Create one, import .txt files, or import your EasyWorship library.
               </p>
             ) : (
               <ul className="panel-scroll grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1.5 overflow-y-auto pr-2 lg:grid-cols-3">
                 {songs.map(song => {
                   const isActive = song.id === selectedId
+                  const inSession = sessionIds.has(song.id)
                   return (
-                    <li key={song.id}>
+                    <li key={song.id} className="group relative">
                       <button
                         type="button"
                         onClick={() => onPickSong(song.id)}
                         onDoubleClick={() => onGoLiveSong(song.id)}
                         title="Click to preview · double-click to send live"
-                        className={`flex w-full items-center justify-between rounded border px-3 py-1.5 text-left transition-colors ${
+                        className={`flex w-full items-center justify-between rounded border py-1.5 pl-3 pr-9 text-left transition-colors ${
                           isActive
                             ? 'border-primary/40 bg-primary/5'
                             : 'border-outline-variant bg-surface-container-low hover:border-primary/30'
@@ -142,6 +167,19 @@ export default function SongLibraryBand({
                             <span className="font-normal text-on-surface-variant"> — {song.author}</span>
                           )}
                         </span>
+                      </button>
+                      {/* A sibling, not a child: a button can't nest inside the row's button. */}
+                      <button
+                        type="button"
+                        onClick={() => onAddToSession(song)}
+                        title={inSession ? 'In this session' : 'Add to session'}
+                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded p-0.5 transition-colors ${
+                          inSession
+                            ? 'text-primary'
+                            : 'invisible text-on-surface-variant hover:text-primary group-hover:visible'
+                        }`}
+                      >
+                        <Icon name={inSession ? 'playlist_add_check' : 'playlist_add'} size={18} />
                       </button>
                     </li>
                   )
@@ -171,8 +209,8 @@ export default function SongLibraryBand({
             <button
               type="button"
               disabled={importing}
-              onClick={() => ewRef.current?.click()}
-              title="Import EasyWorship song.db"
+              onClick={() => void handleEasyWorship()}
+              title="Import your EasyWorship song library (found automatically)"
               className="flex items-center gap-2 rounded border border-outline-variant bg-surface-container px-4 py-2 font-mono text-status-label uppercase text-on-surface-variant transition-colors hover:border-primary hover:text-primary disabled:opacity-40"
             >
               <Icon name="database" size={18} />
@@ -187,17 +225,6 @@ export default function SongLibraryBand({
               onChange={e => {
                 const files = Array.from(e.target.files ?? [])
                 if (files.length > 0) void handleTxt(files)
-                e.target.value = ''
-              }}
-            />
-            <input
-              ref={ewRef}
-              type="file"
-              accept=".db"
-              className="hidden"
-              onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) void handleEasyWorship(file)
                 e.target.value = ''
               }}
             />

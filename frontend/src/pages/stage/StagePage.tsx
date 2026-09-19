@@ -47,7 +47,7 @@ export default function StagePage() {
         setDefaultConfig(displaysData.defaultConfig)
         setFonts(fontsData.fonts)
         setMedia(mediaData.assets)
-        setLiveItem(live ?? null)
+        setLiveItem(live.item)
         // Seed the selection/draft only on a cold start; a persisted selection (from
         // navigating back) is kept, so an in-progress edit isn't discarded. If the
         // persisted selection no longer exists on the server, fall back to the first display.

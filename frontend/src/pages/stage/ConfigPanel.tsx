@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import Icon from '../../components/Icon'
 import type {
   DisplayConfig,
@@ -10,6 +11,7 @@ import type {
 } from '../../lib/types'
 import ConfigRail, { type RailSection } from './ConfigRail'
 import {
+  CollapsibleSection,
   ColorField,
   FieldLabel,
   HelpText,
@@ -48,19 +50,29 @@ function clampWeight(fonts: FontDto[], slug: string, weight: number): number {
   return weights.reduce((best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best))
 }
 
-interface TextSectionProps {
+/** Which accordion section is expanded; clicking a header makes it the open one. */
+interface AccordionProps {
+  openId: string
+  onOpen: (id: string) => void
+}
+
+interface TextSectionProps extends AccordionProps {
   text: TextDisplayConfig
   fonts: FontDto[]
   onChange: (patch: Partial<TextDisplayConfig>) => void
 }
 
 /** Typography + alignment/position sections, shared by the scripture and songs tabs. */
-function TextSections({ text, fonts, onChange }: TextSectionProps) {
+function TextSections({ text, fonts, onChange, openId, onOpen }: TextSectionProps) {
   const fontOptions = fonts.map(f => ({ value: f.slug, label: f.name }))
   return (
     <>
-      <section className="space-y-4 rounded-xl border border-surface-variant/50 bg-surface-container p-4">
-        <SectionLabel icon="text_fields">Typography</SectionLabel>
+      <CollapsibleSection
+        icon="text_fields"
+        title="Typography"
+        open={openId === 'typography'}
+        onOpen={() => onOpen('typography')}
+      >
         <div className="grid grid-cols-2 gap-3">
           <SelectField
             label="Font family"
@@ -92,10 +104,14 @@ function TextSections({ text, fonts, onChange }: TextSectionProps) {
           onChange={textColor => onChange({ textColor })}
         />
         <HelpText>Text auto-fits the window; long passages shrink below this cap.</HelpText>
-      </section>
+      </CollapsibleSection>
 
-      <section className="space-y-4 rounded-xl border border-surface-variant/50 bg-surface-container p-4">
-        <SectionLabel icon="format_align_center">Alignment &amp; Position</SectionLabel>
+      <CollapsibleSection
+        icon="format_align_center"
+        title="Alignment & Position"
+        open={openId === 'alignment'}
+        onOpen={() => onOpen('alignment')}
+      >
         <div className="grid grid-cols-2 gap-4">
           <SegmentedIconToggle
             label="Horizontal"
@@ -146,12 +162,12 @@ function TextSections({ text, fonts, onChange }: TextSectionProps) {
           </div>
         </div>
         <HelpText>Drag the frame in the preview to move or resize this window.</HelpText>
-      </section>
+      </CollapsibleSection>
     </>
   )
 }
 
-interface BackgroundSectionProps {
+interface BackgroundSectionProps extends AccordionProps {
   text: TextDisplayConfig
   media: MediaAssetDto[]
   onChange: (patch: Partial<TextDisplayConfig>) => void
@@ -160,7 +176,15 @@ interface BackgroundSectionProps {
 }
 
 /** Window background (solid / image / motion) section, shared by the scripture and songs tabs. */
-function BackgroundSection({ text, media, onChange, onMediaChange, onError }: BackgroundSectionProps) {
+function BackgroundSection({
+  text,
+  media,
+  onChange,
+  onMediaChange,
+  onError,
+  openId,
+  onOpen,
+}: BackgroundSectionProps) {
   const isMedia = text.background.type !== 'solid'
   const selectSolid = () =>
     onChange({ background: { ...text.background, type: 'solid', assetId: null } })
@@ -170,8 +194,12 @@ function BackgroundSection({ text, media, onChange, onMediaChange, onError }: Ba
     onChange({ background: { ...text.background, type: current?.kind ?? 'image' } })
   }
   return (
-    <section className="space-y-4 rounded-xl border border-surface-variant/50 bg-surface-container p-4">
-      <SectionLabel icon="wallpaper">Background</SectionLabel>
+    <CollapsibleSection
+      icon="wallpaper"
+      title="Background"
+      open={openId === 'background'}
+      onOpen={() => onOpen('background')}
+    >
       <div className="flex rounded-lg border border-surface-variant bg-surface-container-lowest p-1">
         <button
           type="button"
@@ -220,7 +248,7 @@ function BackgroundSection({ text, media, onChange, onMediaChange, onError }: Ba
           </HelpText>
         </>
       )}
-    </section>
+    </CollapsibleSection>
   )
 }
 
@@ -243,6 +271,12 @@ export default function ConfigPanel({
   // A display that has followers must stay custom (no chains).
   const hasFollowers = displays.some(d => d.followsDisplayId === display.id)
   const sourceCandidates = displays.filter(d => d.id !== display.id && d.followsDisplayId === null)
+  // Expanded accordion section per text tab, kept while switching rail tabs.
+  const [openSections, setOpenSections] = useState({ scripture: 'typography', songs: 'typography' })
+  const accordion = (type: 'scripture' | 'songs'): AccordionProps => ({
+    openId: openSections[type],
+    onOpen: id => setOpenSections(prev => ({ ...prev, [type]: id })),
+  })
 
   const updateText = (type: 'scripture' | 'songs') => (patch: Partial<TextDisplayConfig>) =>
     onChange({ [type]: { ...draft[type], text: { ...draft[type].text, ...patch } } })
@@ -260,9 +294,12 @@ export default function ConfigPanel({
 
   const reference = draft.scripture.reference
   const referenceSection = (
-    <section className="space-y-4 rounded-xl border border-surface-variant/50 bg-surface-container p-4">
-      <div className="flex items-center justify-between">
-        <SectionLabel icon="menu_book">Scripture Reference</SectionLabel>
+    <CollapsibleSection
+      icon="menu_book"
+      title="Scripture Reference"
+      open={openSections.scripture === 'reference'}
+      onOpen={() => accordion('scripture').onOpen('reference')}
+      actions={
         <button
           type="button"
           role="switch"
@@ -282,7 +319,8 @@ export default function ConfigPanel({
             }
           />
         </button>
-      </div>
+      }
+    >
       {reference.show ? (
         <>
           <SelectField
@@ -336,7 +374,7 @@ export default function ConfigPanel({
       ) : (
         <HelpText>The reference line (e.g. “John 3:16 · KJV”) is hidden on this display.</HelpText>
       )}
-    </section>
+    </CollapsibleSection>
   )
 
   const mediaSection = (
@@ -358,6 +396,33 @@ export default function ConfigPanel({
         layout="row"
         onChange={backgroundColor => updateMedia({ backgroundColor })}
       />
+      <div className="flex items-center justify-between">
+        <SectionLabel icon="volume_up">Video Sound</SectionLabel>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={draft.media.audio}
+          onClick={() => updateMedia({ audio: !draft.media.audio })}
+          className={
+            draft.media.audio
+              ? 'relative h-5 w-9 rounded-full bg-emerald-live transition-colors'
+              : 'relative h-5 w-9 rounded-full bg-surface-variant transition-colors'
+          }
+        >
+          <span
+            className={
+              draft.media.audio
+                ? 'absolute left-4.5 top-0.5 h-4 w-4 rounded-full bg-white transition-all'
+                : 'absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-all'
+            }
+          />
+        </button>
+      </div>
+      <HelpText>
+        {draft.media.audio
+          ? 'Video sound plays out of this display, at the level set in the live panel. Turn it off on any display that is not the one wired to the speakers — two unmuted displays play the clip twice, slightly apart.'
+          : 'This display is silent. Video still plays; the sound comes from whichever display has this turned on.'}
+      </HelpText>
       <HelpText>
         Images and videos pushed live render inside this window. Drag the frame in the
         preview to move or resize it.
@@ -391,7 +456,7 @@ export default function ConfigPanel({
         active={active}
         onSelect={id => onSelect(id as SectionId)}
       />
-      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
+      <div className="panel-scroll min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="space-y-4 p-4">
           {/* Always explain why controls are locked, whichever section is open. */}
           {following && (
@@ -414,6 +479,7 @@ export default function ConfigPanel({
                     text={draft.scripture.text}
                     fonts={fonts}
                     onChange={updateText('scripture')}
+                    {...accordion('scripture')}
                   />
                   {referenceSection}
                   <BackgroundSection
@@ -422,18 +488,25 @@ export default function ConfigPanel({
                     onChange={updateText('scripture')}
                     onMediaChange={onMediaChange}
                     onError={onError}
+                    {...accordion('scripture')}
                   />
                 </>
               )}
               {active === 'songs' && (
                 <>
-                  <TextSections text={draft.songs.text} fonts={fonts} onChange={updateText('songs')} />
+                  <TextSections
+                    text={draft.songs.text}
+                    fonts={fonts}
+                    onChange={updateText('songs')}
+                    {...accordion('songs')}
+                  />
                   <BackgroundSection
                     text={draft.songs.text}
                     media={media}
                     onChange={updateText('songs')}
                     onMediaChange={onMediaChange}
                     onError={onError}
+                    {...accordion('songs')}
                   />
                 </>
               )}

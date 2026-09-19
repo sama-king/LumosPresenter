@@ -6,11 +6,13 @@ using LumosPresenter.Data.Importing;
 namespace LumosPresenter.WebHost.Api;
 
 /// <summary>
-/// Song library endpoints under /api/songs: CRUD plus .txt import. The lyrics parser
-/// (<see cref="LyricsParser"/>) is the single splitting truth — the editor submits raw
-/// lyrics and the server parses them, so the .txt path and a future EasyWorship import
-/// (POST /api/songs/import/easyworship: multipart 'songs' + 'songwords' Firebird files →
-/// RTF strip → LyricsParser) share exactly the same section semantics.
+/// Song library endpoints under /api/songs: CRUD plus .txt and EasyWorship import. The
+/// lyrics parser (<see cref="LyricsParser"/>) is the single splitting truth — the editor
+/// submits raw lyrics and the server parses them, so every path (editor, .txt, and
+/// EasyWorship's RTF strip → LyricsParser) shares exactly the same section semantics.
+///
+/// The EasyWorship import reads the library from a path on the host rather than an upload;
+/// see the endpoint below for why a file upload cannot express that source.
 /// </summary>
 internal static class SongsApi
 {
@@ -102,43 +104,56 @@ internal static class SongsApi
             return Results.Ok(new { imported, errors });
         });
 
-        // Import an EasyWorship 6/7 song database (song.db). The uploaded file is spooled to a
-        // temp path, read via Firebird, mapped through the shared RTF strip + lyrics parser, and
-        // titles already in the library are skipped. Firebird embedded needs native binaries at
-        // runtime; unreadable files surface as a 400 rather than a crash.
-        api.MapPost("/songs/import/easyworship", async (
-            HttpRequest request, EasyWorshipImporter importer, CancellationToken ct) =>
+        // Where is the operator's EasyWorship library? The console asks this first so the
+        // common case needs no typing: the profile file EasyWorship writes records the data
+        // directory, and the default install locations are probed as a fallback.
+        api.MapGet("/songs/import/easyworship/detect", () => Results.Ok(new
         {
-            if (!request.HasFormContentType || request.Form.Files.Count == 0)
+            libraries = EasyWorshipSource.Locate().Select(l => new
             {
-                return Results.BadRequest(new { message = "Attach an EasyWorship song.db file." });
+                path = l.SongsPath,
+                format = l.Format.ToString().ToLowerInvariant(),
+                description = l.Description,
+            }),
+        }));
+
+        // Import an EasyWorship library by path. The library is read in place rather than
+        // uploaded: EasyWorship 2009 keeps lyrics in a Songs.MB blob file that routinely runs
+        // to tens of megabytes, and both generations need a second file beside the first, so
+        // a single-file upload cannot express the source. Omit the path to use whatever
+        // detection found. Unreadable or missing libraries surface as a 400, not a crash.
+        api.MapPost("/songs/import/easyworship", async (
+            EasyWorshipImportRequest? request, EasyWorshipImporter importer, CancellationToken ct) =>
+        {
+            var path = request?.Path;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (EasyWorshipSource.Locate().FirstOrDefault() is not { } detected)
+                {
+                    return Results.BadRequest(new
+                    {
+                        message = "No EasyWorship library found. Enter the path to your " +
+                            @"EasyWorship 'Databases\Data' folder.",
+                    });
+                }
+                path = detected.SongsPath;
             }
-            var file = request.Form.Files[0];
-            var tempPath = Path.Combine(Path.GetTempPath(), $"ew-import-{Guid.NewGuid():N}.db");
+
             try
             {
-                await using (var stream = File.Create(tempPath))
-                {
-                    await file.CopyToAsync(stream, ct);
-                }
-                var result = await importer.ImportAsync(tempPath, ct);
+                var result = await importer.ImportAsync(path, ct);
                 return Results.Ok(new
                 {
                     imported = result.Imported.Select(x => new { id = x.Id, title = x.Title }),
                     skipped = result.Skipped,
                     errors = result.Errors.Select(e => new { title = e.Title, message = e.Message }),
+                    source = result.Source,
                 });
             }
-            catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException)
+            catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException
+                                           or DirectoryNotFoundException or UnauthorizedAccessException)
             {
                 return Results.BadRequest(new { message = ex.Message });
-            }
-            finally
-            {
-                if (File.Exists(tempPath))
-                {
-                    File.Delete(tempPath);
-                }
             }
         });
 
@@ -166,3 +181,8 @@ internal static class SongsApi
 }
 
 internal sealed record SaveSongRequest(string Title, string? Author, string? Copyright, string Lyrics);
+
+/// <summary>
+/// Import source: an EasyWorship data folder or songs file. Null means use auto-detection.
+/// </summary>
+internal sealed record EasyWorshipImportRequest(string? Path);

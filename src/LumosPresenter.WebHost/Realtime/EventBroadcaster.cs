@@ -14,6 +14,13 @@ public sealed class EventBroadcaster
 {
     private readonly ConcurrentDictionary<Guid, Channel<PipelineEvent>> _subscribers = new();
 
+    /// <summary>
+    /// Connected SSE clients. Lets a producer skip work nobody is listening for — the level
+    /// meter in particular, which would otherwise sample the mic ten times a second with no
+    /// console open.
+    /// </summary>
+    public int SubscriberCount => _subscribers.Count;
+
     public (Guid Id, ChannelReader<PipelineEvent> Reader) Subscribe()
     {
         var id = Guid.NewGuid();

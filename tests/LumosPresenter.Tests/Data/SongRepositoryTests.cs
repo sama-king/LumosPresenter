@@ -115,6 +115,26 @@ public sealed class SongRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_MatchesLyrics_TitleMatchesFirst()
+    {
+        await _repository.CreateAsync(Draft("Amazing Grace", (null, "How sweet the sound")));
+        await _repository.CreateAsync(Draft("Abide With Me", (null, "Fast falls the eventide\nAmazing love")));
+        await _repository.CreateAsync(Draft("Zion", (null, "unrelated")));
+
+        var results = await _repository.SearchAsync("amazing");
+        Assert.Equal(["Amazing Grace", "Abide With Me"], results.Select(r => r.Title));
+    }
+
+    [Fact]
+    public async Task Search_LyricPhraseAcrossLineBreak_Matches()
+    {
+        await _repository.CreateAsync(Draft("Amazing Grace", (null, "Amazing grace\r\nhow sweet the sound")));
+
+        var results = await _repository.SearchAsync("grace how sweet");
+        Assert.Equal("Amazing Grace", Assert.Single(results).Title);
+    }
+
+    [Fact]
     public async Task Search_Blank_ReturnsAllOrderedByTitle()
     {
         await _repository.CreateAsync(Draft("Zion", (null, "a")));

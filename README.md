@@ -48,6 +48,11 @@ composed via DI in `WebHost`.
 ## Development
 
 ```bash
+# Bundled translations (KJV, ASV, BSB) — run once per clone. Downloads ~14 MB into
+# src/LumosPresenter.WebHost/data/seed, which the WebHost imports on first start.
+# Without it the app starts but every scripture lookup comes back empty.
+dotnet run scripts/fetch-seed-bibles.cs
+
 # Backend (serves on http://0.0.0.0:5170)
 dotnet run --project src/LumosPresenter.WebHost
 
@@ -84,44 +89,89 @@ has no key yet, after which the stored key is authoritative. The console marks e
 translation **Offline** or **Online** so an operator knows what is safe to rely on without
 a connection.
 
-## Packaging (from a Mac, both platforms)
+## Packaging (macOS, Windows, Linux)
+
+One script builds every platform:
 
 ```bash
-cd frontend && npm run build && cd ..
-dotnet publish src/LumosPresenter.WebHost -c Release -r osx-arm64 --self-contained
-dotnet publish src/LumosPresenter.WebHost -c Release -r win-x64 --self-contained
-
-# The launcher is the app the operator runs; publish it into the same folder so it can
-# find and start the WebHost beside it.
-dotnet publish src/LumosPresenter.Launcher -c Release -r osx-arm64 --self-contained
-dotnet publish src/LumosPresenter.Launcher -c Release -r win-x64 --self-contained
+src/LumosPresenter.Launcher/package.sh osx-arm64   # or osx-x64
+src/LumosPresenter.Launcher/package.sh win-x64     # or win-arm64
+src/LumosPresenter.Launcher/package.sh linux-x64   # or linux-arm64
 ```
 
-On macOS the dock icon comes from the bundle's `CFBundleIconFile`, which no runtime API
-can set — a bare `dotnet publish` shows the generic .NET icon. Build the `.app` instead:
+| Platform | Output in `artifacts/` |
+|---|---|
+| macOS | `LumosCast.app` and `LumosCast-<version>-<rid>.zip` |
+| Windows | `LumosCast-<rid>/`, a folder that runs as-is, plus `LumosCast-<version>-<rid>-setup.exe` when Inno Setup is installed |
+| Linux | `LumosCast-<rid>/` (with a `.desktop` entry and icon) and `LumosCast-<version>-<rid>.tar.gz` |
 
-```bash
-src/LumosPresenter.Launcher/package-macos.sh osx-arm64
+It needs .NET, Node/npm and bash (Git Bash on Windows). Before the first run, provide the
+content that is not build output: the translation seeds (`dotnet run
+scripts/fetch-seed-bibles.cs`) and the default speech model named by `Speech:ModelPath`
+in `appsettings.json`. The script stops with an error when either is missing, rather than
+build a package that cannot read scripture or start listening.
+
+What every package gets, in one place so the platforms cannot drift apart:
+
+- **A fresh console.** The frontend is rebuilt into `WebHost/wwwroot` first
+  (`--skip-frontend` to reuse the last build).
+- **Launcher and WebHost in one directory.** `ServerProcess` starts the server by looking
+  for it beside its own executable, so a nested layout leaves the launcher up with no
+  server behind it.
+- **All the default backgrounds.** The script checks the count against `assets/backgrounds/`.
+- **Two Whisper models**, the default and `base.en`, so switching model in the console
+  works without a download, plus `sherpa-onnx` when present, and the CoreML encoders on macOS.
+- **This platform's natives only.** Foreign-platform libraries are pruned, but the GPU
+  variants stay: Vulkan on Windows and Linux, CoreML on macOS.
+- **The translation seeds, not this machine's database.** Each install builds a clean
+  `data/lumos.db` on first start. `--with-database` ships the build machine's database
+  instead (songs, settings, api.bible key and all), which suits your own installs only.
+
+The version comes from `<Version>` in `LumosPresenter.Launcher.csproj`; the script stamps it
+into the macOS bundle and the Windows installer.
+
+`dotnet publish -r` cross-compiles, so any host can build any platform, with two limits:
+the Windows installer needs `iscc`, which runs only on Windows, and a macOS or Linux
+package built on Windows loses the executable bit. Build those on a Mac or Linux machine.
+
+On macOS the dock icon comes only from the bundle's `CFBundleIconFile`, which no runtime
+API can set, so `dotnet run` shows the generic .NET icon and the packaged `.app` the brand.
+On Linux, *Add from Disk* opens the system file dialog through `zenity` or `kdialog`;
+with neither installed it falls back to the console's own file browser.
+
+### Default backgrounds
+
+The images in [`assets/backgrounds/`](assets/backgrounds/) ship with every package and
+appear in the Stage tab's background picker on first start. To change the set, change the
+folder — there is no other step:
+
+- **Add** a `.jpg`, `.png`, `.webp` or `.gif` (or a `.mp4`, `.webm` or `.mov` for a
+  looping motion background). Use lower-case extensions; the build matches on them.
+- **Name it for what it shows** — `mountain-lake-reflection.jpg` appears to the operator
+  as "Mountain Lake Reflection". The filename is also the background's permanent id, so
+  **do not rename one after it has shipped**: existing installs would get the renamed copy
+  as a new background alongside the old one.
+- **Prefer 1920×1080 or larger, landscape.** Anything smaller is upscaled on a projector.
+- **Rebuild the package** as above.
+
+This works because `LumosPresenter.WebHost.csproj` links the folder into build and publish
+output as `backgrounds/` beside the exe — so packaging picks it up without a script change
+— and `BundledBackgroundSeeder` registers each file at startup. On an existing install:
+
+| Change | Result on the operator's machine |
+|---|---|
+| File added to the folder | Appears after the update |
+| Operator deletes a default | Stays deleted; it is not re-added at the next start |
+| File removed from the folder | Stays on installs that already have it |
+
+### Windows installer
+
+With [Inno Setup 6](https://jrsoftware.org/isdl.php) installed, `package.sh win-x64` compiles
+`package-windows.iss` itself and writes `artifacts/LumosCast-<version>-win-x64-setup.exe`.
+To compile it by hand (on Windows; `iscc` does not run elsewhere):
+
 ```
-
-On Windows the same script exists as `package-windows.sh`, which cross-compiles from
-macOS or Linux and writes `artifacts/LumosCast-win-x64/` — a self-contained folder that
-runs as-is:
-
-```bash
-src/LumosPresenter.Launcher/package-windows.sh win-x64
-```
-
-Both scripts publish the launcher and the WebHost into the *same* directory on purpose:
-`ServerProcess` starts the server by looking for it beside its own executable, so a
-nested layout leaves the launcher up with no server behind it.
-
-To produce the installer, compile `package-windows.iss` with
-[Inno Setup 6](https://jrsoftware.org/isdl.php) **on Windows** (`iscc` does not run on
-macOS), which emits `artifacts/LumosCast-1.0.0-setup.exe`:
-
-```
-iscc src\LumosPresenter.Launcher\package-windows.iss
+iscc /DAppVersion=1.0.0 /DRid=win-x64 src\LumosPresenter.Launcher\package-windows.iss
 ```
 
 Uninstalling leaves `data/` behind on purpose: `lumos.db` holds the operator's imported
@@ -133,7 +183,7 @@ user cannot do under `%ProgramFiles%` — installed there it would run but never
 
 ## Logs
 
-Both live in `logs/`, beside the app — inside `LumosPresenter.app/Contents/MacOS/` on
+Both live in `logs/`, beside the app — inside `LumosCast.app/Contents/MacOS/` on
 macOS, in the install directory on Windows. The launcher's **Show logs** button (and the
 tray's **Show Logs**) opens the folder.
 

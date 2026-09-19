@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from '../../components/Icon'
 import { api } from '../../lib/api'
-import type { ApiBibleKeyStatus, AudioDevice, StatusDto, Translation } from '../../lib/types'
+import { useServerEvent } from '../../lib/events'
+import type {
+  ApiBibleKeyStatus,
+  AudioDevice,
+  AudioLevel,
+  StatusDto,
+  Translation,
+} from '../../lib/types'
 import { isOfflineTranslation } from '../../lib/types'
 import SettingsSection from './SettingsSection'
 import Slider from './Slider'
@@ -39,6 +46,8 @@ const ENGINE_NOTES: Record<string, { title: string; blurb: string; trait: string
 
 /** Matches TranscriptionPipeline.UtteranceWindow's own clamp. */
 const WINDOW_MAX = 200
+/** Thousandths of RMS — the server clamps the speech threshold to 0.001–0.1. */
+const VAD_MAX = 100
 
 /** "ggml-small.en.bin" → "small.en", as the status footer labels it. */
 function shortModelName(file: string): string {
@@ -57,6 +66,19 @@ export default function SettingsPage() {
   // Slider positions are local so dragging stays smooth; the server is told on release.
   const [window_, setWindow_] = useState(15)
   const [confidence, setConfidence] = useState(75)
+  const [vadThreshold, setVadThreshold] = useState(30)
+
+  // Live input level, pushed on the shared event stream, so the operator can pick a
+  // threshold by looking at their actual room rather than guessing a number.
+  const [level, setLevel] = useState<AudioLevel>({ peak: 0, rms: 0, clipping: false })
+  useServerEvent<AudioLevel>('level', setLevel)
+
+  // Listening is toggled from the footer, which is on screen while this page is open, so
+  // the mount fetch alone would leave the level hint claiming nothing is listening. Track
+  // the same server-authoritative status event the footer does; it arrives as a patch.
+  useServerEvent<Partial<StatusDto>>('status', patch =>
+    setStatus(current => (current ? { ...current, ...patch } : current)),
+  )
 
   const [keyInput, setKeyInput] = useState('')
   const [editingKey, setEditingKey] = useState(false)
@@ -78,6 +100,7 @@ export default function SettingsPage() {
           setStatus(s)
           setWindow_(s.utteranceWindow)
           setConfidence(Math.round(s.autoLiveConfidence * 100))
+          setVadThreshold(Math.round(s.vadThreshold * 1000))
         })
         .catch(fail),
     [fail],
@@ -161,6 +184,9 @@ export default function SettingsPage() {
   }
 
   const engines = status?.engines ?? []
+  // Whisper.net names its runtimes "Vulkan", "Cpu", "CoreML"…; compare case-insensitively
+  // rather than depending on that casing.
+  const accelerator = status?.accelerator?.toLowerCase() ?? null
   const online = translations.filter(t => !isOfflineTranslation(t))
   const offline = translations.filter(isOfflineTranslation)
   const hasKey = apiKey?.configured === true
@@ -257,6 +283,47 @@ export default function SettingsPage() {
               ))}
             </select>
           </div>
+
+          {/*
+            Windows only, and deliberately so: macOS gets CoreML acceleration automatically
+            and has no Vulkan path, so the row would be noise there. The platform comes from
+            the server — the console may be running on a different machine than the engine.
+          */}
+          {status?.platform === 'windows' && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container p-5">
+              <div>
+                <p className="font-bold text-on-surface">GPU acceleration</p>
+                <p className="text-body-md text-on-surface-variant">
+                  {accelerator === null
+                    ? 'Detected when the engine first loads a model — start listening once to find out.'
+                    : accelerator === 'vulkan'
+                      ? 'Vulkan is running on your graphics chip, roughly halving transcription time.'
+                      : 'Running on the CPU. Transcription may not keep up with live speech on modest hardware.'}
+                </p>
+              </div>
+              <span
+                className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 font-mono text-mono-ui uppercase ${
+                  accelerator === 'vulkan'
+                    ? 'border-emerald-live/30 text-emerald-live'
+                    : accelerator === null
+                      ? 'border-outline-variant text-slate-muted'
+                      : 'border-amber-warning/30 text-amber-warning'
+                }`}
+              >
+                <Icon
+                  name={
+                    accelerator === 'vulkan'
+                      ? 'bolt'
+                      : accelerator === null
+                        ? 'help'
+                        : 'memory'
+                  }
+                  size={16}
+                />
+                {accelerator === null ? 'Unknown' : accelerator === 'vulkan' ? 'Vulkan' : 'CPU only'}
+              </span>
+            </div>
+          )}
         </SettingsSection>
 
         <SettingsSection
@@ -488,6 +555,57 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-high p-6">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-body-lg font-bold text-on-surface">Speech threshold</h3>
+                <p className="text-body-md text-on-surface-variant">
+                  How loud the room has to get before the engine treats it as talking. Set it
+                  above your room&rsquo;s background noise but below the speaker&rsquo;s voice:
+                  too low and the hum never counts as a pause, so sentences run together and
+                  arrive late; too high and quiet speech is missed entirely.
+                </p>
+              </div>
+              <div className="shrink-0 rounded border border-outline-variant bg-navy-deep px-3 py-1 text-center">
+                <span className="font-display text-headline-md text-primary">
+                  {(vadThreshold / 1000).toFixed(3)}
+                </span>
+                <span className="ml-1 font-mono text-[10px] uppercase text-slate-muted">RMS</span>
+              </div>
+            </div>
+            <Slider
+              // Thousandths: the server clamps to 0.001–0.1, so the track spans the same.
+              min={1}
+              max={VAD_MAX}
+              value={vadThreshold}
+              onChange={setVadThreshold}
+              onCommit={v =>
+                void api
+                  .setVadThreshold(v)
+                  .then(r => setVadThreshold(Math.round(r.vadThreshold * 1000)))
+                  .catch(fail)
+              }
+              lowLabel="Sensitive (quiet rooms)"
+              highLabel="Strict (noisy rooms)"
+              ariaLabel="Speech energy threshold"
+            />
+            <div className="mt-6 flex gap-3 rounded-lg border border-outline-variant/30 bg-navy-deep/50 p-4">
+              <Icon name="graphic_eq" size={20} className="text-emerald-live" />
+              <p className="text-mono-ui italic leading-tight text-on-surface-variant">
+                {status?.listening ? (
+                  <>
+                    Your input is reading{' '}
+                    <span className="not-italic text-on-surface">{level.rms.toFixed(3)}</span> right
+                    now. Stay quiet for a moment and set the threshold a little above the number you
+                    see.
+                  </>
+                ) : (
+                  <>Start listening to see your room&rsquo;s current level here while you adjust.</>
+                )}
+              </p>
+            </div>
           </div>
         </SettingsSection>
       </div>

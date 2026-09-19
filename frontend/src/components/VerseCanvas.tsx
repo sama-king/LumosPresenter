@@ -15,6 +15,8 @@ interface VerseCanvasProps {
   reference?: ReferenceConfig | null
   fonts: FontDto[]
   item: LiveItemDto | null
+  /** Paint the window background even with no item — the state after a text-only clear. */
+  showBackground?: boolean
   className?: string
 }
 
@@ -34,14 +36,28 @@ const ALIGN: Record<TextDisplayConfig['horizontalAlign'], string> = {
 const MIN_FONT_PX = 12
 
 /**
+ * Song sections are written as separate lines and the operator lays them out that way in
+ * the editor and the live queue, so the projection has to honour those breaks too — HTML
+ * would otherwise collapse them into one run-on paragraph. `pre-line` keeps the newlines
+ * while still collapsing incidental double spaces and letting long lines wrap, which is
+ * what lyrics want; scripture has no newlines, so it renders identically to before.
+ *
+ * Shared with the offscreen measurer deliberately: the auto-fit search sizes text by
+ * measuring it, so if the two disagreed about line breaks the chosen size would be wrong.
+ */
+const VERSE_WHITE_SPACE = 'pre-line' as const
+
+/**
  * The single source of rendering truth for a text window: the projection surface
  * (DisplayPage) and the stage-config preview both render through it, so the preview
  * is WYSIWYG. All pixel values in the config are relative to a 1920-wide frame and
  * scaled by the actual container width.
  *
  * Only the text viewport is painted (with the configured background); everything
- * outside — and the whole canvas when nothing is live — stays transparent, so the
- * display reads as alpha in OBS/compositing contexts.
+ * outside stays transparent, so the display reads as alpha in OBS/compositing contexts.
+ * With nothing live the whole canvas is transparent too — unless showBackground is set
+ * (the operator cleared only the text), in which case the empty window keeps its
+ * background, and a looping video carries on without restarting.
  *
  * Text auto-fits: text.fontSizePx is the MAXIMUM size, and a binary search against
  * an invisible measurer shrinks long passages until verse + reference fit the
@@ -52,6 +68,7 @@ export default function VerseCanvas({
   reference = null,
   fonts,
   item,
+  showBackground = false,
   className = '',
 }: VerseCanvasProps) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -124,6 +141,7 @@ export default function VerseCanvas({
         letterSpacing: '0.05em',
         textTransform: 'uppercase',
         lineHeight: 'normal',
+        whiteSpace: 'normal',
       })
       measure.textContent = referenceLine
       reserved = measure.offsetHeight + 32 * scale
@@ -135,8 +153,14 @@ export default function VerseCanvas({
       letterSpacing: '-0.02em',
       textTransform: 'none',
       lineHeight: '1.2',
+      // Must match the rendered paragraph exactly: song sections carry their own line
+      // breaks, and measuring them collapsed would size the text for fewer lines than are
+      // actually drawn, overflowing the viewport.
+      whiteSpace: VERSE_WHITE_SPACE,
     })
-    measure.textContent = `“${item.text}”`
+    // Measures exactly what is drawn — no decoration around the text, so the fitted size
+    // matches the rendered paragraph.
+    measure.textContent = item.text
 
     const fits = (px: number) => {
       measure.style.fontSize = `${px}px`
@@ -199,7 +223,9 @@ export default function VerseCanvas({
         className="pointer-events-none invisible absolute left-0 top-0"
         style={{ whiteSpace: 'normal' }}
       />
-      {scale > 0 && item && (
+      {/* The window stays mounted across item → empty → item so its <video> background keeps
+          looping instead of restarting every time the text is cleared. */}
+      {scale > 0 && (item || showBackground) && (
         <div
           className="absolute flex flex-col overflow-hidden"
           style={{
@@ -218,20 +244,23 @@ export default function VerseCanvas({
         >
           <BackgroundLayer background={text.background} />
           {referenceAbove && referenceNode}
-          <p
-            style={{
-              position: 'relative', // above the media background layer
-              zIndex: 1,
-              fontFamily: verseFamily,
-              fontWeight: text.fontWeight,
-              fontSize: fitSize ?? text.fontSizePx * scale,
-              lineHeight: 1.2,
-              letterSpacing: '-0.02em',
-              color: text.textColor,
-            }}
-          >
-            “{item.text}”
-          </p>
+          {item && (
+            <p
+              style={{
+                position: 'relative', // above the media background layer
+                zIndex: 1,
+                fontFamily: verseFamily,
+                fontWeight: text.fontWeight,
+                fontSize: fitSize ?? text.fontSizePx * scale,
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+                color: text.textColor,
+                whiteSpace: VERSE_WHITE_SPACE,
+              }}
+            >
+              {item.text}
+            </p>
+          )}
           {!referenceAbove && referenceNode}
         </div>
       )}

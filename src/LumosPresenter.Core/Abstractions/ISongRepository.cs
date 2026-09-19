@@ -8,7 +8,10 @@ namespace LumosPresenter.Core.Abstractions;
 /// </summary>
 public interface ISongRepository
 {
-    /// <summary>Case-insensitive title substring search; null/blank returns the whole library, by title.</summary>
+    /// <summary>
+    /// Case-insensitive substring search over titles and lyrics, title matches first; null/blank
+    /// returns the whole library, by title.
+    /// </summary>
     Task<IReadOnlyList<SongSummary>> SearchAsync(string? query, CancellationToken cancellationToken = default);
 
     Task<Song?> GetAsync(int id, CancellationToken cancellationToken = default);

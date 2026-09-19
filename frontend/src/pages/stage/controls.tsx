@@ -13,6 +13,41 @@ export function SectionLabel({ icon, children }: { icon: string; children: React
   )
 }
 
+interface CollapsibleSectionProps {
+  icon: string
+  title: string
+  open: boolean
+  onOpen: () => void
+  /** Controls kept in the header (e.g. an on/off switch), clickable while collapsed. */
+  actions?: React.ReactNode
+  children: React.ReactNode
+}
+
+/** Accordion card: the header expands it; the parent keeps only one open at a time. */
+export function CollapsibleSection({ icon, title, open, onOpen, actions, children }: CollapsibleSectionProps) {
+  return (
+    <section className="rounded-xl border border-surface-variant/50 bg-surface-container">
+      <div className="flex items-center gap-3 p-4">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+        >
+          <SectionLabel icon={icon}>{title}</SectionLabel>
+          <Icon
+            name="expand_more"
+            size={20}
+            className={`text-slate-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {actions}
+      </div>
+      {open && <div className="space-y-4 px-4 pb-4">{children}</div>}
+    </section>
+  )
+}
+
 export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <span className="block font-mono text-mono-ui tracking-wider text-slate-muted">

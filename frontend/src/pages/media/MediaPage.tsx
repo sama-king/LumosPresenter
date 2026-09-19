@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import LivePanel from '../../components/live/LivePanel'
 import { api } from '../../lib/api'
-import { useServerEvent } from '../../lib/events'
+import { useLive, type LiveAdvance, type LiveSlide } from '../../lib/live'
 import { usePersistentState } from '../../lib/persistentState'
-import type { LiveEvent, MediaEndedEvent, MediaLibraryItemDto } from '../../lib/types'
+import type { MediaLibraryItemDto } from '../../lib/types'
 import ConfirmDialog from './ConfirmDialog'
 import MediaGalleryBand from './MediaGalleryBand'
-import MediaLivePanel from './MediaLivePanel'
 import MediaPreview from './MediaPreview'
 import SchedulePanel from './SchedulePanel'
 import {
   entryMediaIds,
+  entryTitle,
   groupTitle,
   scheduleItem,
   scheduleQueue,
@@ -27,8 +28,13 @@ const SCHEDULE_KEY = 'lumos:media-schedule'
  * are service-shaped arrangements the operator builds in the moment, and losing one to an
  * accidental refresh would be worse than the cost of storing a little JSON. It holds gallery
  * ids only, so the gallery (which IS in the database) stays the single source of file truth.
+ *
+ * What is LIVE is not this page's state. It belongs to the shared live channel (lib/live.tsx),
+ * along with slideshow timing, queue advance and video transport — so a clip sent from here
+ * can still be paused from the scripture tab, and so the displays run one clock between them.
  */
 export default function MediaPage() {
+  const live = useLive()
   const [items, setItems] = useState<MediaLibraryItemDto[]>([])
   const [schedule, setSchedule] = useState<ScheduleEntry[]>(() => {
     try {
@@ -50,18 +56,8 @@ export default function MediaPage() {
   )
   const [selectedIds, setSelectedIds] = usePersistentState<string[]>('media.gallerySelection', [])
 
-  // Live (right column). liveEntryId names a schedule entry, or the synthetic id below when
-  // a gallery tile was sent live directly without ever entering the schedule.
-  const [liveEntryId, setLiveEntryId] = usePersistentState<string | null>('media.liveEntryId', null)
-  const [liveAdHoc, setLiveAdHoc] = usePersistentState<ScheduleEntry | null>('media.liveAdHoc', null)
-  const [liveIndex, setLiveIndex] = usePersistentState<number>('media.liveIndex', 0)
-  const [playing, setPlaying] = useState(false)
   const [error, setError] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string[] | null>(null)
-
-  // The live-item id of this console's most recent push. Displays report an ended video by
-  // that id, and the 'live' SSE echoes it back, so it is how this tab recognises its own work.
-  const lastPushedIdRef = useRef<string | null>(null)
 
   const showError = useCallback((message: string) => {
     setError(message)
@@ -87,68 +83,53 @@ export default function MediaPage() {
     void refresh()
   }, [refresh])
 
-  const liveEntry = useMemo(
-    () =>
-      liveAdHoc && liveAdHoc.id === liveEntryId
-        ? liveAdHoc
-        : (schedule.find(entry => entry.id === liveEntryId) ?? null),
-    [liveAdHoc, liveEntryId, schedule],
-  )
-  // Memoized: showIndex closes over this, and the slideshow effect depends on showIndex.
-  // A fresh array each render would restart the dwell timer on every render, so a slide
-  // could never actually reach its full playtime.
-  const liveIds = useMemo(() => (liveEntry ? entryMediaIds(liveEntry) : []), [liveEntry])
-
   /**
-   * Pushes one gallery item to the displays. `position` (1-based) is passed for a group
-   * member: it lands in the reference so two identical files in a row are not seen as a
-   * duplicate push and suppressed — which would leave a queue stalled on a video that has
-   * already ended. `loop` is false for queue members so they can end and report back.
+   * Turns a schedule entry into live-queue slides. The entry's shape decides how the queue
+   * advances: a slideshow on a timer, a video queue when each clip ends, a single item not
+   * at all.
    */
-  const pushMedia = useCallback(
-    (mediaId: string, options?: { position?: [number, number]; loop?: boolean }) => {
-      const media = byId.get(mediaId)
-      if (!media) return
-      const reference = options?.position
-        ? `${media.title} (${options.position[0]}/${options.position[1]})`
-        : media.title
-      void api
-        .goLive({
-          reference,
-          text: '',
-          translation: '',
-          kind: 'media',
-          mediaId: media.id,
-          mediaKind: media.kind,
-          mediaLoop: options?.loop ?? true,
-        })
-        // Remembering the id the server assigned is what lets this console tell its own
-        // pushes apart from another tab's, and lets N displays' end-reports collapse to
-        // a single advance.
-        .then(item => (lastPushedIdRef.current = item.id))
-        .catch((err: Error) => showError(err.message))
+  const entrySlides = useCallback(
+    (entry: ScheduleEntry): { slides: LiveSlide[]; advance: LiveAdvance } => {
+      const slides = entryMediaIds(entry).flatMap<LiveSlide>((mediaId, index) => {
+        const media = byId.get(mediaId)
+        if (!media) return []
+        return [
+          {
+            // Position-qualified so the same file twice in one group stays two rows.
+            id: `${entry.id}:${index}:${mediaId}`,
+            kind: 'media',
+            reference: media.title,
+            title: media.title,
+            mediaId: media.id,
+            mediaKind: media.kind,
+          },
+        ]
+      })
+      const advance: LiveAdvance =
+        entry.type === 'slideshow'
+          ? { mode: 'timer', secondsPerSlide: entry.secondsPerSlide, wrap: true }
+          : entry.type === 'queue'
+            ? { mode: 'end', wrap: false }
+            : { mode: 'manual' }
+      return { slides, advance }
     },
-    [byId, showError],
+    [byId],
   )
 
   /** Sends a schedule entry live from its first frame. Slideshows start playing immediately. */
   const goLiveEntry = useCallback(
     (entry: ScheduleEntry) => {
-      const ids = entryMediaIds(entry)
-      if (ids.length === 0) return
-      // An ad-hoc entry (gallery double-click) is not in the schedule, so keep a copy —
-      // otherwise the live panel would have nothing to resolve its id against.
-      setLiveAdHoc(schedule.some(e => e.id === entry.id) ? null : entry)
-      setLiveEntryId(entry.id)
-      setLiveIndex(0)
-      setPlaying(entry.type === 'slideshow')
-      pushMedia(ids[0], {
-        position: entry.type === 'item' ? undefined : [1, ids.length],
-        // Queue members must be able to end so the next one can follow.
-        loop: entry.type !== 'queue',
+      const { slides, advance } = entrySlides(entry)
+      if (slides.length === 0) return
+      live.setQueue({
+        slides,
+        origin: 'media',
+        title: entryTitle(entry, byId),
+        advance,
+        autoPlay: true,
       })
     },
-    [pushMedia, schedule, setLiveAdHoc, setLiveEntryId, setLiveIndex],
+    [entrySlides, live, byId],
   )
 
   const goLiveFromSchedule = useCallback(
@@ -164,65 +145,12 @@ export default function MediaPage() {
     [goLiveEntry],
   )
 
-  /** Moves the live position within a group and pushes the frame that lands there. */
-  const showIndex = useCallback(
-    (next: number) => {
-      if (liveIds.length === 0) return
-      const isQueue = liveEntry?.type === 'queue'
-      // A slideshow wraps — it is meant to run unattended. A queue is a sequence with an
-      // end: running off it holds the last video rather than starting over.
-      if (isQueue && (next < 0 || next >= liveIds.length)) return
-      const position = ((next % liveIds.length) + liveIds.length) % liveIds.length
-      setLiveIndex(position)
-      pushMedia(liveIds[position], {
-        position: liveEntry && liveEntry.type !== 'item' ? [position + 1, liveIds.length] : undefined,
-        loop: !isQueue,
-      })
-    },
-    [liveEntry, liveIds, pushMedia, setLiveIndex],
-  )
-
-  // Slideshow advance. The console owns the timer so what is live is decided in one place;
-  // the interval restarts whenever the dwell time or position changes.
-  useEffect(() => {
-    if (!playing || liveEntry?.type !== 'slideshow' || liveIds.length < 2) return
-    const handle = window.setTimeout(
-      () => showIndex(liveIndex + 1),
-      Math.max(1, liveEntry.secondsPerSlide) * 1000,
-    )
-    return () => window.clearTimeout(handle)
-  }, [playing, liveEntry, liveIndex, liveIds.length, showIndex])
-
-  // Another tab (or the auto-live pipeline) can take the displays at any time. Ownership is
-  // decided by live-item id, not by media id and index: during a fast advance this handler
-  // can still be holding the previous index, and comparing against it would make the console
-  // tear down its own queue mid-run.
-  useServerEvent<LiveEvent>('live', event => {
-    if (!('cleared' in event) && event.id === lastPushedIdRef.current) return
-    lastPushedIdRef.current = null
-    setPlaying(false)
-    setLiveEntryId(null)
-    setLiveAdHoc(null)
-    setLiveIndex(0)
-  })
-
-  // A queue video finished. Every display showing it reports, so the first report advances
-  // (which replaces the tracked id) and the rest fall through as stale — that id check is
-  // what keeps a two-display setup from skipping a video per extra screen.
-  useServerEvent<MediaEndedEvent>('mediaended', event => {
-    if (event.id !== lastPushedIdRef.current) return
-    if (liveEntry?.type !== 'queue') return
-    lastPushedIdRef.current = null
-    showIndex(liveIndex + 1)
-  })
-
-  const clearLive = useCallback(() => {
-    setPlaying(false)
-    setLiveEntryId(null)
-    setLiveAdHoc(null)
-    setLiveIndex(0)
-    void api.clearLive().catch((err: Error) => showError(err.message))
-  }, [setLiveEntryId, setLiveAdHoc, setLiveIndex, showError])
+  // Which schedule row to mark live. Slide ids are prefixed with the entry that produced
+  // them, so an ad-hoc gallery push (whose entry was never filed) simply matches nothing.
+  const liveEntryId =
+    live.origin === 'media' && live.liveSlide
+      ? (live.liveSlide.id.split(':')[0] ?? null)
+      : null
 
   // --- Schedule editing ---
 
@@ -266,15 +194,21 @@ export default function MediaPage() {
     })
   }, [])
 
-  const setSlideSeconds = useCallback((entryId: string, seconds: number) => {
-    setSchedule(prev =>
-      prev.map(entry =>
-        entry.id === entryId && entry.type === 'slideshow'
-          ? { ...entry, secondsPerSlide: seconds }
-          : entry,
-      ),
-    )
-  }, [])
+  const setSlideSeconds = useCallback(
+    (entryId: string, seconds: number) => {
+      setSchedule(prev =>
+        prev.map(entry =>
+          entry.id === entryId && entry.type === 'slideshow'
+            ? { ...entry, secondsPerSlide: seconds }
+            : entry,
+        ),
+      )
+      // Adjusting the slideshow that is running should take effect now, not on the next
+      // go-live: the operator reaches for this control because the pace is wrong on screen.
+      if (liveEntryId === entryId) live.setSecondsPerSlide(seconds)
+    },
+    [liveEntryId, live],
+  )
 
   const reorderGroup = useCallback((entryId: string, from: number, to: number) => {
     setSchedule(prev =>
@@ -339,7 +273,7 @@ export default function MediaPage() {
           schedule={schedule}
           byId={byId}
           selectedId={previewEntryId}
-          liveEntryId={liveEntry && schedule.some(e => e.id === liveEntry.id) ? liveEntry.id : null}
+          liveEntryId={schedule.some(entry => entry.id === liveEntryId) ? liveEntryId : null}
           onPreview={entryId => {
             setPreviewEntryId(entryId)
             setPreviewItemId(null)
@@ -361,23 +295,7 @@ export default function MediaPage() {
           onReorderGroup={reorderGroup}
           onRemoveFromGroup={removeFromGroup}
         />
-        <MediaLivePanel
-          entry={liveEntry}
-          ids={liveIds}
-          index={Math.min(liveIndex, Math.max(0, liveIds.length - 1))}
-          byId={byId}
-          playing={playing}
-          onSelectIndex={index => {
-            setPlaying(false)
-            showIndex(index)
-          }}
-          onTogglePlay={() => setPlaying(prev => !prev)}
-          onStep={delta => {
-            setPlaying(false)
-            showIndex(liveIndex + delta)
-          }}
-          onClear={clearLive}
-        />
+        <LivePanel />
       </div>
 
       <MediaGalleryBand

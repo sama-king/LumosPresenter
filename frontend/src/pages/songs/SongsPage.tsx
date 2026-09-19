@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import LivePanel from '../../components/live/LivePanel'
 import { api } from '../../lib/api'
-import { useServerEvent } from '../../lib/events'
+import { useLive } from '../../lib/live'
 import { usePersistentState } from '../../lib/persistentState'
-import type { LiveEvent, SongDto, SongSummaryDto } from '../../lib/types'
+import type { SongDto, SongSummaryDto } from '../../lib/types'
 import SectionList from './SectionList'
 import SessionPanel from './SessionPanel'
 import SongEditor from './SongEditor'
 import SongLibraryBand from './SongLibraryBand'
-import SongLiveQueue from './SongLiveQueue'
 import type { SessionSong } from './SongsSession'
-import { composeSongQueue, type SongQueueItem } from './songQueue'
+import { composeSongQueue, toSlide } from './songQueue'
 
 /**
  * Songs operator console (/songs). Layout mirrors the scripture page: session history +
@@ -19,10 +19,11 @@ import { composeSongQueue, type SongQueueItem } from './songQueue'
  * so they survive navigating away and back. Go-live pushes one section with kind:'song'.
  */
 export default function SongsPage() {
+  // The live queue is shared with scripture and media — see lib/live.tsx. This page fills it
+  // with the sections of whatever song went live and otherwise reads what is live back.
+  const live = useLive()
   // Durable across navigation (usePersistentState); transient (loading/editing/error) is not.
   const [selected, setSelected] = usePersistentState<SongDto | null>('songs.selected', null)
-  const [queue, setQueue] = usePersistentState<SongQueueItem[]>('songs.queue', [])
-  const [liveId, setLiveId] = usePersistentState<string | null>('songs.liveId', null)
   // Section staged in the middle column (single-click select), distinct from what is live.
   const [selectedSection, setSelectedSection] = usePersistentState<number | null>(
     'songs.selectedSection',
@@ -39,9 +40,11 @@ export default function SongsPage() {
     window.setTimeout(() => setError(''), 6000)
   }, [])
 
-  // Records a song in the session history (whole songs, most-recent-first, de-duped).
+  // Records a song in the session history (whole songs, most-recent-first, de-duped). Going live
+  // does this, and so does the library's add-to-session button, which lets the operator line up
+  // a set before the service without putting anything on the displays.
   const recordSession = useCallback(
-    (song: SongDto) =>
+    (song: Pick<SongSummaryDto, 'id' | 'title' | 'author'>) =>
       setSession(prev => {
         const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         const withoutSong = prev.filter(s => s.id !== song.id)
@@ -92,20 +95,15 @@ export default function SongsPage() {
       const items = composeSongQueue(song)
       const item = items.find(q => q.sectionPosition === position)
       if (!item) return
-      setQueue(items)
-      setLiveId(item.id)
       recordSession(song)
-      void api
-        .goLive({
-          reference: item.reference,
-          text: item.text,
-          translation: '',
-          source: 'manual',
-          kind: 'song',
-        })
-        .catch((err: Error) => showError(err.message))
+      live.setQueue({
+        slides: items.map(queued => toSlide(song, queued)),
+        liveId: item.id,
+        origin: 'songs',
+        title: song.title,
+      })
     },
-    [showError, setQueue, setLiveId, recordSession],
+    [live, recordSession],
   )
 
   /**
@@ -130,27 +128,6 @@ export default function SongsPage() {
     [showError, setSelected, setSelectedSection, pushLiveFromSong],
   )
 
-  /**
-   * Jump to a section of the already-live song (single-click in the live queue). The
-   * queue's items belong to the live song, which may differ from the previewed `selected`,
-   * so push the item directly rather than reconstructing from `selected`.
-   */
-  const pushLive = useCallback(
-    (item: SongQueueItem) => {
-      setLiveId(item.id)
-      void api
-        .goLive({
-          reference: item.reference,
-          text: item.text,
-          translation: '',
-          source: 'manual',
-          kind: 'song',
-        })
-        .catch((err: Error) => showError(err.message))
-    },
-    [showError, setLiveId],
-  )
-
   // Double-click a section in the middle column: send it live.
   const goLiveSection = useCallback(
     (position: number) => {
@@ -165,36 +142,20 @@ export default function SongsPage() {
     [setSelectedSection],
   )
 
-  // ← / → / Space step through the live song's sections. Ignored while typing in a field.
+  // ← / → / Space step through the live song's sections. Ignored while typing in a field, and
+  // only while a song is what is live — the same keys must not walk a scripture queue from here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (queue.length === 0) return
+      if (live.origin !== 'songs' || live.slides.length === 0) return
       const target = e.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== ' ') return
       e.preventDefault()
-      const currentIndex = queue.findIndex(q => q.id === liveId)
-      const step = e.key === 'ArrowLeft' ? -1 : 1
-      const nextIndex = currentIndex < 0 ? 0 : currentIndex + step
-      if (nextIndex >= 0 && nextIndex < queue.length) pushLive(queue[nextIndex])
+      live.step(e.key === 'ArrowLeft' ? -1 : 1)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [queue, liveId, pushLive])
-
-  // Keep the live queue in sync when the displays are cleared or a scripture push takes over.
-  useServerEvent<LiveEvent>('live', data => {
-    if ('cleared' in data || data.kind !== 'song') {
-      setLiveId(null)
-      setQueue([])
-    }
-  })
-
-  const clearAll = useCallback(() => {
-    setLiveId(null)
-    setQueue([])
-    void api.clearLive().catch((err: Error) => showError(err.message))
-  }, [showError, setLiveId, setQueue])
+  }, [live])
 
   const onSaved = useCallback(
     (song: SongDto) => {
@@ -209,14 +170,14 @@ export default function SongsPage() {
     (id: number) => {
       setEditing(false)
       if (selected?.id === id) setSelected(null)
-      // If the deleted song is the one on the displays, tear down the live queue too.
-      if (liveId?.startsWith(`${id}:`)) {
-        setQueue([])
-        setLiveId(null)
+      // If the deleted song is the one on the displays, take it off them: a queue pointing at
+      // sections that no longer exist would break the next advance.
+      if (live.liveSlide?.kind === 'song' && live.liveSlide.songId === id) {
+        live.clear()
       }
       void refreshLibrary()
     },
-    [refreshLibrary, selected, liveId, setSelected, setQueue, setLiveId],
+    [refreshLibrary, selected, live, setSelected],
   )
 
   const newSong = useCallback(() => {
@@ -224,11 +185,15 @@ export default function SongsPage() {
     setEditing(true)
   }, [setSelected])
 
-  const liveItem = queue.find(item => item.id === liveId)
+  // The section highlight in the middle column only applies when the previewed song IS the
+  // one on the displays; another song (or a verse) being live leaves it unmarked.
+  const liveSlide = live.liveSlide
   const liveSectionPosition =
-    liveItem && selected && liveItem.id.startsWith(`${selected.id}:`)
-      ? liveItem.sectionPosition
+    liveSlide?.kind === 'song' && selected && liveSlide.songId === selected.id
+      ? liveSlide.sectionPosition
       : null
+
+  const sessionIds = useMemo(() => new Set(session.map(s => s.id)), [session])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -266,13 +231,15 @@ export default function SongsPage() {
             onEdit={() => setEditing(true)}
           />
         )}
-        <SongLiveQueue queue={queue} liveId={liveId} onPickItem={pushLive} onClearAll={clearAll} />
+        <LivePanel />
       </div>
       <SongLibraryBand
         songs={songs}
         selectedId={selected?.id ?? null}
         onPickSong={pickSong}
         onGoLiveSong={goLiveSong}
+        sessionIds={sessionIds}
+        onAddToSession={recordSession}
         onNewSong={newSong}
         onSearch={q => void refreshLibrary(q)}
         onImported={() => void refreshLibrary()}

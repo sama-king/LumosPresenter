@@ -1,10 +1,20 @@
 import { useState } from 'react'
-import Icon from '../../components/Icon'
-import { mediaLibraryFileUrl } from '../../lib/media'
-import type { MediaLibraryItemDto } from '../../lib/types'
+import Icon from './Icon'
+import { mediaLibraryFileUrl } from '../lib/media'
+/**
+ * Enough of a gallery item to draw it. Looser than MediaLibraryItemDto so the live panel can
+ * render a thumbnail from a queue slide, which carries the id and kind but not the row.
+ * `exists` unset means "assume it is there" — the caller has no listing to say otherwise.
+ */
+export interface ThumbSource {
+  id: string
+  kind: 'image' | 'video'
+  sourcePath?: string
+  exists?: boolean
+}
 
 interface MediaThumbProps {
-  item: MediaLibraryItemDto | undefined
+  item: ThumbSource | undefined
   className?: string
 }
 
@@ -19,7 +29,7 @@ interface MediaThumbProps {
  */
 export default function MediaThumb({ item, className = '' }: MediaThumbProps) {
   const [failed, setFailed] = useState(false)
-  const broken = !item || !item.exists || failed
+  const broken = !item || item.exists === false || failed
 
   if (broken) {
     return (

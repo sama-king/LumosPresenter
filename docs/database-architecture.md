@@ -68,10 +68,37 @@ All content enters through importers that normalize into the same schema:
    file (`{CODE}_books`, `{CODE}_verses`, books in canonical order), validates 66 books,
    imports translation metadata + book names + ~31k verses in one prepared-statement
    transaction. Used by `DatabaseInitializer` to seed bundled translations on first run
-   from `data/seed/*.db` (gitignored, downloaded).
-2. **EasyWorship importer** (planned) — same shape: validate → map books to canonical
-   numbers → import → appear in the translation dropdown. This is how operators bring
-   licensed translations they own without the app redistributing copyrighted text.
+   from `data/seed/*.db` (gitignored, downloaded by `scripts/fetch-seed-bibles.cs`).
+
+   That script is not a plain download. Upstream's `formats/sqlite/*.db` currently hold
+   seven concatenated copies of each Bible (217,714 verse rows for 31,102 verses; 462 rows
+   in `{CODE}_books`), so they fail this importer's 66-book check. The copies disagree —
+   against upstream's own CSV export the oldest differs in 152 verses for KJV, 938 for ASV
+   and 2,200 for BSB, while the newest matches exactly — so the script keeps the newest row
+   per (book, chapter, verse) and verifies every verse against the CSV before writing.
+2. **`EasyWorshipImporter`** (implemented, songs) — imports an operator's existing
+   EasyWorship song library. The two generations store songs quite differently, so a
+   format-specific reader normalizes each into `EasyWorshipSongRow`, and everything after
+   that is shared: `RtfStripper` → `LyricsParser` → `SongDraft`, the same splitting the
+   editor and .txt import use. Existing titles are skipped, so re-running is safe.
+
+   | Generation | Files | Storage |
+   |---|---|---|
+   | EasyWorship 2009 and earlier | `Songs.DB` + `Songs.MB` | Paradox table; lyrics are RTF in the blob file |
+   | EasyWorship 6/7 | `Songs.db` + `SongWords.db` | Two separate Firebird databases, joined in memory on song id |
+
+   Neither generation is a single file, and 2009's blob file routinely runs to tens of
+   megabytes, so the library is read **in place from a path** rather than uploaded.
+   `EasyWorshipSource.Locate()` finds it without operator input by reading `AppInstDataDir`
+   out of EasyWorship's own profile (`Default.ewp`) and falling back to the default install
+   locations; the console only asks for a path when that finds nothing. Format is detected
+   by attempting the Paradox parse, whose header validation is strict enough (declared field
+   widths must total the record size exactly) that success is a reliable positive.
+
+3. **EasyWorship translation importer** (planned) — the same shape for Bibles: validate →
+   map books to canonical numbers → import → appear in the translation dropdown. This is how
+   operators bring licensed translations they own without the app redistributing
+   copyrighted text.
 
 Seeding is idempotent: existing translation codes are skipped, missing seed files log a
 warning and skip (so tests and CI run without the ~14 MB of seed data).
@@ -151,6 +178,14 @@ API; `GET /api/settings/api-bible` reports only `configured` and a masked last-f
 | Row identity | GUID + `file_ext` | absolute `source_path` (unique) |
 | Used for | per-display *backgrounds* | projected *content* |
 
+`media_assets` also holds the **default backgrounds** that ship with the app
+(`source = 'bundled'`, id `bundled-<filename>`). `BundledBackgroundSeeder` copies them from
+the `backgrounds/` folder beside the exe into `media/` at startup, so they are served,
+selected and deleted exactly like an upload. The `media.bundledBackgrounds.seeded` app
+setting records every default ever registered — the rows alone cannot tell "never
+seeded" from "deleted by the operator", and only the first should be (re-)added. See
+[Default backgrounds](../README.md#default-backgrounds) for adding one.
+
 ```sql
 media_library (id, source_path, kind, title, content_type, added_at, sort_order)
 ```
@@ -163,8 +198,10 @@ an error thumbnail. Deleting a gallery item unlinks the row and never touches th
 The unique index on `source_path` makes adding idempotent, so re-adding a file — or
 re-dropping a folder — updates nothing and duplicates nothing.
 
-Paths only ever originate server-side (`GET /api/media/library/browse`), because a browser
-cannot read a file's location from an input or a drop. `GET /api/media/library/{id}/file`
+Paths only ever originate server-side, because a browser cannot read a file's location from
+an input or a drop: `POST /api/media/library/pick` opens the system file dialog on the server
+machine, and `GET /api/media/library/browse` lists directories for a console opened from
+another machine, where that dialog would be out of the operator's reach. `GET /api/media/library/{id}/file`
 resolves its path from the row alone and never from the query string, so a linked gallery
 does not become an arbitrary-file-read endpoint.
 

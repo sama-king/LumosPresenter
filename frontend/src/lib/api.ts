@@ -9,8 +9,10 @@ import type {
   DisplayDto,
   DisplaysResponse,
   EasyWorshipImportResult,
+  EasyWorshipLibrary,
   FontDto,
   LiveItemDto,
+  LiveSnapshotDto,
   MediaAssetDto,
   MediaLibraryItemDto,
   SaveSongBody,
@@ -71,12 +73,29 @@ export const api = {
     mediaId?: string
     mediaKind?: 'image' | 'video'
     mediaLoop?: boolean
+    /**
+     * Id to give the live item. The console names its own pushes so it recognises them when
+     * the 'live' event comes back — that event can arrive before this response does, so an
+     * id learned from the response would come too late.
+     */
+    id?: string
   }) => request<LiveItemDto>('POST', '/api/live', item),
   /** A display telling the server its non-looping video finished. Fire-and-forget. */
   mediaEnded: (id: string) =>
     request<{ accepted: boolean }>('POST', '/api/live/media/ended', { id }),
-  getLive: () => request<LiveItemDto | undefined>('GET', '/api/live'),
-  clearLive: () => request<void>('POST', '/api/live/clear'),
+  /** Console transport for the live video; every display mirrors what this sets. */
+  setMediaTransport: (body: {
+    itemId: string
+    playing: boolean
+    position: number
+    loop?: boolean
+    volume?: number
+    muted?: boolean
+  }) => request<{ accepted: boolean }>('POST', '/api/live/media/transport', body),
+  getLive: () => request<LiveSnapshotDto>('GET', '/api/live'),
+  /** 'text' removes the words but keeps the text window's background up; 'all' clears everything. */
+  clearLive: (scope: 'text' | 'all' = 'all') =>
+    request<void>('POST', `/api/live/clear?scope=${scope}`),
 
   startListening: () => request<void>('POST', '/api/listening/start'),
   stopListening: () => request<void>('POST', '/api/listening/stop'),
@@ -117,12 +136,18 @@ export const api = {
   deleteMedia: (id: string) => request<void>('DELETE', `/api/media/backgrounds/${id}`),
 
   // Media library (the /media tab). Files are linked by absolute path, never uploaded —
-  // browseMedia is how the console gets a real path, since a browser file input hides it.
+  // pickMediaFiles opens the system file dialog on the server machine, since a browser file
+  // input hides the path; browseMedia is its fallback for a console on another machine.
   getMediaLibrary: () =>
     request<{ items: MediaLibraryItemDto[] }>('GET', '/api/media/library'),
   addMediaPaths: (paths: string[]) =>
     request<AddMediaResult>('POST', '/api/media/library', { paths }),
   deleteMediaLibraryItem: (id: string) => request<void>('DELETE', `/api/media/library/${id}`),
+  pickMediaFiles: (kind: 'image' | 'video') =>
+    request<{ available: boolean; paths: string[] }>(
+      'POST',
+      `/api/media/library/pick?kind=${kind}`,
+    ),
   browseMedia: (path?: string) =>
     request<BrowseResponse>(
       'GET',
@@ -140,6 +165,9 @@ export const api = {
   // Sent as a percentage so the URL carries no decimal point.
   setAutoLiveConfidence: (percent: number) =>
     request<{ autoLiveConfidence: number }>('POST', `/api/parser/confidence/${percent}`),
+  // Sent in thousandths for the same reason as the confidence percentage above.
+  setVadThreshold: (thousandths: number) =>
+    request<{ vadThreshold: number }>('POST', `/api/speech/vad/threshold/${thousandths}`),
   setEngine: (name: string) =>
     request<void>('POST', `/api/engine/${encodeURIComponent(name)}`),
 
@@ -169,10 +197,27 @@ export const api = {
     }
     return data as SongImportResult
   },
-  importSongEasyWorship: async (file: File) => {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await fetch('/api/songs/import/easyworship', { method: 'POST', body: form })
+  /** Libraries the server found by itself, so the operator usually types nothing. */
+  detectEasyWorship: async () => {
+    const res = await fetch('/api/songs/import/easyworship/detect')
+    const raw = await res.text()
+    const data = raw ? (JSON.parse(raw) as unknown) : undefined
+    if (!res.ok) {
+      throw new Error((data as { message?: string })?.message ?? `Detect failed (${res.status})`)
+    }
+    return (data as { libraries: EasyWorshipLibrary[] }).libraries
+  },
+  /**
+   * Imports an EasyWorship library the server can reach on disk. The library is read in
+   * place rather than uploaded — it spans two files, one of which is routinely tens of
+   * megabytes. Omit the path to let the server use whatever it auto-detected.
+   */
+  importSongEasyWorship: async (path?: string) => {
+    const res = await fetch('/api/songs/import/easyworship', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path ?? null }),
+    })
     const raw = await res.text()
     const data = raw ? (JSON.parse(raw) as unknown) : undefined
     if (!res.ok) {

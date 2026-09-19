@@ -122,14 +122,15 @@ export default function AdminPage() {
       setPipelineError(JSON.parse((e as MessageEvent).data).message)
     })
 
-    // Poll the input level ~10x/sec for the meter.
-    const meter = setInterval(() => {
-      void fetch('/api/audio/level').then(r => r.json()).then(setLevel).catch(() => {})
-    }, 100)
+    // The meter rides the same stream as everything else: the server pushes a level when it
+    // moves. This used to poll 10x/sec, which had no backoff — with the server unreachable
+    // the requests piled up until the browser's connection pool was exhausted.
+    events.addEventListener('level', e => {
+      setLevel(JSON.parse((e as MessageEvent).data) as Level)
+    })
 
     return () => {
       events.close()
-      clearInterval(meter)
     }
   }, [refreshStatus])
 

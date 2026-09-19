@@ -1,3 +1,4 @@
+import type { LiveSlide } from '../../lib/live'
 import type { SongDto, SongSectionDto } from '../../lib/types'
 
 /**
@@ -48,4 +49,17 @@ export function sectionsToLyrics(sections: SongSectionDto[]): string {
   return sections
     .map(section => (section.label ? `${section.label}\n${section.text}` : section.text))
     .join('\n\n')
+}
+
+/** A song section as the shared live queue holds it. */
+export function toSlide(song: SongDto, item: SongQueueItem): LiveSlide {
+  return {
+    id: item.id,
+    kind: 'song',
+    reference: item.reference,
+    text: item.text,
+    label: item.label,
+    songId: song.id,
+    sectionPosition: item.sectionPosition,
+  }
 }

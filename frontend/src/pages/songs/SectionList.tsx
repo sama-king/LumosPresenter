@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import Icon from '../../components/Icon'
 import type { SongDto } from '../../lib/types'
 import { sectionLabel } from './songQueue'
@@ -28,6 +29,22 @@ export default function SectionList({
   onGoLiveSection,
   onEdit,
 }: SectionListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // A newly previewed or pushed song starts at its first section. Keyed on the object, not
+  // the id, so re-picking the song already shown also brings it back to the top.
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [song])
+
+  // Keep the live section in view as the arrow keys walk through the song.
+  useEffect(() => {
+    if (liveSectionPosition === null) return
+    scrollRef.current
+      ?.querySelector(`[data-section="${liveSectionPosition}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [song, liveSectionPosition])
+
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-surface">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-outline-variant px-4">
@@ -52,7 +69,7 @@ export default function SectionList({
         )}
       </div>
 
-      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-8 py-6">
+      <div ref={scrollRef} className="panel-scroll min-h-0 flex-1 overflow-y-auto px-8 py-6">
         {!song ? (
           <div className="flex h-full items-center justify-center">
             <p className="font-mono text-mono-ui italic text-slate-muted">

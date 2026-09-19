@@ -127,6 +127,7 @@ export function configsEqual(a: DisplayConfig, b: DisplayConfig): boolean {
     textsEqual(a.songs.text, b.songs.text) &&
     a.media.fit === b.media.fit &&
     a.media.backgroundColor === b.media.backgroundColor &&
+    a.media.audio === b.media.audio &&
     rectsEqual(a.media.viewport, b.media.viewport)
   )
 }

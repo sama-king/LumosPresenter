@@ -12,4 +12,17 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
 
+  <!-- Default backgrounds. Linked from assets/backgrounds so they land in a backgrounds/
+       folder beside the exe in both build and publish output — which is where
+       BundledBackgroundSeeder looks on startup. Because publish carries them, the packaging
+       scripts need no step of their own: adding an image to assets/backgrounds is enough
+       for the next package to ship it. Explicit extensions keep stray files (Thumbs.db,
+       .DS_Store, the folder's README) out of the payload. -->
+  <ItemGroup>
+    <None Include="..\..\assets\backgrounds\*.jpg;..\..\assets\backgrounds\*.jpeg;..\..\assets\backgrounds\*.png;..\..\assets\backgrounds\*.webp;..\..\assets\backgrounds\*.gif;..\..\assets\backgrounds\*.mp4;..\..\assets\backgrounds\*.webm;..\..\assets\backgrounds\*.mov"
+          Link="backgrounds\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

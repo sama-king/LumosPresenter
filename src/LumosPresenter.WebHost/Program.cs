@@ -12,7 +12,9 @@ using LumosPresenter.Data;
 using LumosPresenter.Speech;
 using LumosPresenter.WebHost.Api;
 using LumosPresenter.WebHost.Realtime;
+using Microsoft.Extensions.Options;
 using Serilog;
+using Serilog.Events;
 
 // The api.bible key now lives in the database, set from the console, so each user supplies
 // their own. A .env at the repository root is still read here purely as a development
@@ -78,6 +80,8 @@ builder.Services.AddSingleton<MediaDecoder>();
 builder.Services.AddSingleton<TranslationState>();
 builder.Services.AddSingleton<LiveState>();
 builder.Services.AddSingleton<TranscriptionPipeline>();
+builder.Services.AddHostedService<AudioLevelPublisher>();
+builder.Services.AddHostedService<LiveSyncPublisher>();
 
 var app = builder.Build();
 
@@ -107,7 +111,25 @@ if (configuredConfidence is { } confidence)
     app.Services.GetRequiredService<TranscriptionPipeline>().AutoLiveConfidence = confidence;
 }
 
-app.UseSerilogRequestLogging();
+// The operator console polls /api/audio/level 10×/second for the level meter the whole
+// time it is open, and the launcher polls /healthz to see whether the server is up. Logged
+// at Information those two drown everything else — a single open console writes ~860k lines
+// a day, and the file sink flushes every second to do it. Demote the pollers to Verbose so
+// they fall below the configured minimum, while still logging any that actually fail.
+app.UseSerilogRequestLogging(options =>
+{
+    options.GetLevel = (httpContext, _, exception) =>
+    {
+        if (exception is not null || httpContext.Response.StatusCode >= 500)
+        {
+            return LogEventLevel.Error;
+        }
+        var path = httpContext.Request.Path;
+        var isPoll = path.StartsWithSegments("/healthz")
+            || path.StartsWithSegments("/api/audio/level");
+        return isPoll ? LogEventLevel.Verbose : LogEventLevel.Information;
+    };
+});
 
 // The React build (frontend/) is emitted into wwwroot; / serves the SPA,
 // which routes /admin (operator console) and /display (projection surface).
@@ -123,11 +145,15 @@ api.MapGet("/status", (
     ISpeechEngineProvider engines,
     IAudioCapture capture,
     SessionRecorder recorder,
-    TranslationState translation) =>
+    TranslationState translation,
+    IOptions<SpeechOptions> speech) =>
     Results.Ok(new
     {
         listening = pipeline.IsListening,
         engine = engines.Current.Name,
+        // Null when the active engine can run; otherwise why it can't, so the console can
+        // say so instead of leaving "Listening: false" unexplained.
+        engineError = engines.Current.ReadinessError,
         engines = engines.AvailableEngines,
         deviceId = capture.DeviceId,
         recording = recorder.Enabled,
@@ -135,6 +161,16 @@ api.MapGet("/status", (
         utteranceWindow = pipeline.UtteranceWindow,
         autoLiveConfidence = pipeline.AutoLiveConfidence,
         translation = translation.Current,
+        vadThreshold = speech.Value.Vad.EnergyThreshold,
+        // The console can be open on a different machine than the server (a display on the
+        // LAN), so which OS this is has to come from the server, not the browser. The
+        // acceleration indicator is a Windows concern: macOS gets CoreML automatically and
+        // has no Vulkan path.
+        platform = OperatingSystem.IsWindows() ? "windows"
+            : OperatingSystem.IsMacOS() ? "macos"
+            : "linux",
+        // Null until a model has been loaded — the native library resolves lazily.
+        accelerator = WhisperSpeechEngine.LoadedRuntime,
     }));
 
 // --- Bible translations: list available, switch the active one ---
@@ -230,6 +266,25 @@ api.MapPost("/parser/confidence/{percent:int}", (int percent, TranscriptionPipel
 {
     pipeline.AutoLiveConfidence = Math.Clamp(percent, 50, 100) / 100.0;
     return Results.Ok(new { autoLiveConfidence = pipeline.AutoLiveConfidence });
+});
+
+// How loud a frame must be to count as speech rather than room noise. Sent in thousandths
+// so the URL carries no decimal point, the same trick /parser/confidence uses for percent.
+// Clamped to 0.001–0.1: at zero every frame is speech and utterances never close, and past
+// 0.1 normal speech falls below the gate and nothing is heard at all.
+//
+// Takes effect on the next utterance: the engines read Vad off the shared SpeechOptions
+// each time they chunk, so there is no need to restart the pipeline.
+// Deliberately publishes no SSE event, matching /parser/window and /parser/confidence: the
+// console that made the change learns the value from the response, and subscribers treat a
+// `status` event as carrying the full listening/engine state — a partial one would blank
+// the footer's toggle and engine label.
+api.MapPost("/speech/vad/threshold/{thousandths:int}", (
+    int thousandths, IOptions<SpeechOptions> speech) =>
+{
+    var value = Math.Clamp(thousandths, 1, 100) / 1000.0;
+    speech.Value.Vad = speech.Value.Vad with { EnergyThreshold = value };
+    return Results.Ok(new { vadThreshold = value });
 });
 
 // --- Scripture lookup: synchronous search + chapter fetch for the operator console ---
@@ -328,8 +383,19 @@ api.MapPost("/live", (LiveRequest request, LiveState live) =>
     {
         return Results.BadRequest(new { message = "Reference and text are required." });
     }
+    // The console may name the item it is pushing. It has to: it recognises its own pushes by
+    // id when the 'live' event comes back, and that event can beat the HTTP response to the
+    // browser — a console that had to wait for the response to learn the id would sometimes
+    // mistake its own push for someone else's and tear its queue down.
+    var id = string.IsNullOrWhiteSpace(request.Id)
+        ? Guid.NewGuid().ToString("N")
+        : request.Id.Trim();
+    if (id.Length > 64 || !id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+    {
+        return Results.BadRequest(new { message = "A live id must be 64 or fewer letters, digits, '-' or '_'." });
+    }
     var item = new LiveItem(
-        Guid.NewGuid().ToString("N"),
+        id,
         request.Reference?.Trim() ?? string.Empty,
         request.Text?.Trim() ?? string.Empty,
         request.Translation,
@@ -343,12 +409,28 @@ api.MapPost("/live", (LiveRequest request, LiveState live) =>
         request.MediaId,
         request.MediaKind,
         request.MediaLoop ?? true);
-    live.Show(item);
-    return Results.Ok(item);
+    return Results.Ok(live.Show(item));
 });
 
-api.MapGet("/live", (LiveState live) =>
-    live.Current is { } item ? Results.Ok(item) : Results.NoContent());
+// The whole live channel in one read: what is showing, how its video is playing, and the
+// revision both belong to. Displays call this on connect and whenever a heartbeat says they
+// are behind, so a missed event self-heals instead of freezing a screen.
+api.MapGet("/live", (LiveState live) => Results.Ok(live.Snapshot()));
+
+// Console transport for the live video. Playback is driven from the live panel and mirrored
+// by every display, so play/pause/seek land on all of them from one place rather than each
+// screen running its own copy at its own pace.
+api.MapPost("/live/media/transport", (MediaTransportRequest request, LiveState live) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ItemId))
+    {
+        return Results.BadRequest(new { message = "A live item id is required." });
+    }
+    var applied = live.SetTransport(
+        request.ItemId, request.Playing, request.Position, request.Loop, request.Volume, request.Muted);
+    // Not an error: the operator moved on between the click and the request landing.
+    return Results.Ok(new { accepted = applied });
+});
 
 // A display reporting that its non-looping video finished. The console owns queue order, so
 // the server only relays: it confirms the report is about what is actually live (a display
@@ -366,9 +448,15 @@ api.MapPost("/live/media/ended", (MediaEndedRequest request, LiveState live, Eve
     return Results.Ok(new { accepted = true });
 });
 
-api.MapPost("/live/clear", (LiveState live) =>
+// scope=text removes only the words and keeps the text window's background up; scope=all (the
+// default, so older callers keep their behaviour) leaves the displays fully transparent.
+api.MapPost("/live/clear", (string? scope, LiveState live) =>
 {
-    live.Clear();
+    if (scope is not (null or "all" or "text"))
+    {
+        return Results.BadRequest(new { message = $"Unknown clear scope '{scope}'." });
+    }
+    live.Clear(textOnly: scope == "text");
     return Results.Ok();
 });
 
@@ -693,8 +781,15 @@ api.MapGet("/audio/recording/latest", (SessionRecorder recorder) =>
         ? Results.File(path, "audio/wav", Path.GetFileName(path))
         : Results.NotFound(new { message = "No recording yet. Enable recording, then start and stop listening." }));
 
-api.MapPost("/listening/start", (TranscriptionPipeline pipeline) =>
+// The engine loads its model lazily on the pipeline's background task, so a missing model
+// used to fail *after* this returned 200 — the console showed "Listening: false" with no
+// reason. Refuse up front instead, and hand back the engine's own message.
+api.MapPost("/listening/start", (TranscriptionPipeline pipeline, ISpeechEngineProvider engines) =>
 {
+    if (engines.Current.ReadinessError is { } reason)
+    {
+        return Results.Json(new { message = reason }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
     pipeline.Start();
     return Results.Ok();
 });
@@ -777,12 +872,19 @@ api.MapGet("/media/{id}/audio", (string id) =>
 
 // fast=true transcribes as fast as the engine allows (no playback sync); default paces
 // frames at real time to track browser playback.
-api.MapPost("/media/{id}/transcribe", async (string id, bool? fast, TranscriptionPipeline pipeline) =>
+api.MapPost("/media/{id}/transcribe", async (
+    string id, bool? fast, TranscriptionPipeline pipeline, ISpeechEngineProvider engines) =>
 {
     var wavPath = Path.Combine(mediaDir, id + ".decoded.wav");
     if (!File.Exists(wavPath))
     {
         return Results.NotFound(new { message = "Unknown media id. Upload the file again." });
+    }
+    // Same lazy-load trap as /listening/start: without this the caller gets 200 and the
+    // missing model only shows up in the log.
+    if (engines.Current.ReadinessError is { } reason)
+    {
+        return Results.Json(new { message = reason }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
     await pipeline.StartFileAsync(wavPath, paced: fast != true);
     return Results.Ok();
@@ -965,7 +1067,15 @@ internal sealed record LiveRequest(
     string? Kind = null,
     string? MediaId = null,
     string? MediaKind = null,
-    bool? MediaLoop = null);
+    bool? MediaLoop = null,
+    string? Id = null);
 internal sealed record MediaEndedRequest(string Id);
+internal sealed record MediaTransportRequest(
+    string ItemId,
+    bool Playing,
+    double Position,
+    bool? Loop,
+    double? Volume = null,
+    bool? Muted = null);
 internal sealed record CreateDisplayRequest(string? Name, int? UseSettingsOfDisplayId);
 internal sealed record SetDisplaySourceRequest(int? FollowsDisplayId);

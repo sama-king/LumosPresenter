@@ -294,6 +294,7 @@ public sealed class TranscriptionPipeline(
         {
             listening = IsListening,
             engine = engines.Current.Name,
+            engineError = engines.Current.ReadinessError,
         }));
     }
 }

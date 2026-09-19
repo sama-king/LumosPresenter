@@ -37,44 +37,18 @@ public sealed class PortAudioCapture : IAudioCapture
             SingleReader = true,
         });
 
-        PortAudio.Initialize();
+        lock (PortAudioLock.Gate)
+        {
+            PortAudio.Initialize();
+        }
         PortAudioSharp.Stream? stream = null;
         try
         {
-            var device = DeviceId ?? PortAudio.DefaultInputDevice;
-            if (device == PortAudio.NoDevice)
+            // The lock cannot span the await below, so it covers opening the stream only.
+            lock (PortAudioLock.Gate)
             {
-                throw new InvalidOperationException(
-                    "No microphone found. Connect an input device and check OS microphone permissions.");
+                stream = OpenStream(channel);
             }
-
-            var parameters = new StreamParameters
-            {
-                device = device,
-                channelCount = 1,
-                sampleFormat = SampleFormat.Float32,
-                suggestedLatency = PortAudio.GetDeviceInfo(device).defaultLowInputLatency,
-                hostApiSpecificStreamInfo = IntPtr.Zero,
-            };
-
-            stream = new PortAudioSharp.Stream(
-                inParams: parameters,
-                outParams: null,
-                sampleRate: SampleRate,
-                framesPerBuffer: FramesPerBuffer,
-                streamFlags: StreamFlags.ClipOff,
-                callback: (nint input, nint _, uint frameCount,
-                    ref StreamCallbackTimeInfo _, StreamCallbackFlags _, nint _) =>
-                {
-                    var samples = new float[frameCount];
-                    Marshal.Copy(input, samples, 0, (int)frameCount);
-                    UpdateLevel(samples);
-                    channel.Writer.TryWrite(new AudioFrame(samples, SampleRate, DateTimeOffset.UtcNow));
-                    return StreamCallbackResult.Continue;
-                },
-                userData: IntPtr.Zero);
-
-            stream.Start();
 
             await foreach (var frame in channel.Reader.ReadAllAsync(cancellationToken))
             {
@@ -85,13 +59,63 @@ public sealed class PortAudioCapture : IAudioCapture
         {
             _peak = 0;
             _rms = 0;
-            if (stream is not null)
+            lock (PortAudioLock.Gate)
             {
-                stream.Stop();
-                stream.Dispose();
+                if (stream is not null)
+                {
+                    stream.Stop();
+                    stream.Dispose();
+                }
+                PortAudio.Terminate();
             }
-            PortAudio.Terminate();
         }
+    }
+
+    private PortAudioSharp.Stream OpenStream(Channel<AudioFrame> channel)
+    {
+        var device = DeviceId ?? PortAudio.DefaultInputDevice;
+        if (device == PortAudio.NoDevice)
+        {
+            throw new InvalidOperationException(
+                "No microphone found. Connect an input device and check OS microphone permissions.");
+        }
+
+        var parameters = new StreamParameters
+        {
+            device = device,
+            channelCount = 1,
+            sampleFormat = SampleFormat.Float32,
+            suggestedLatency = PortAudio.GetDeviceInfo(device).defaultLowInputLatency,
+            hostApiSpecificStreamInfo = IntPtr.Zero,
+        };
+
+        var stream = new PortAudioSharp.Stream(
+            inParams: parameters,
+            outParams: null,
+            sampleRate: SampleRate,
+            framesPerBuffer: FramesPerBuffer,
+            streamFlags: StreamFlags.ClipOff,
+            callback: (nint input, nint _, uint frameCount,
+                ref StreamCallbackTimeInfo _, StreamCallbackFlags _, nint _) =>
+            {
+                var samples = new float[frameCount];
+                Marshal.Copy(input, samples, 0, (int)frameCount);
+                UpdateLevel(samples);
+                channel.Writer.TryWrite(new AudioFrame(samples, SampleRate, DateTimeOffset.UtcNow));
+                return StreamCallbackResult.Continue;
+            },
+            userData: IntPtr.Zero);
+
+        try
+        {
+            stream.Start();
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+        return stream;
     }
 
     private void UpdateLevel(float[] samples)

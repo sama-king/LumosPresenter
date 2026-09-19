@@ -158,7 +158,7 @@ public sealed class MainWindow : Window
         ExtendClientAreaToDecorationsHint = false;
 
         // Titlebar and taskbar icon on Windows and Linux. macOS takes its dock icon from
-        // the bundle's CFBundleIconFile instead — see Info.plist and package-macos.sh.
+        // the bundle's CFBundleIconFile instead — see Info.plist and package.sh.
         try
         {
             using var icon = AssetLoader.Open(new Uri("avares://LumosPresenter.Launcher/Assets/tray-128.png"));
