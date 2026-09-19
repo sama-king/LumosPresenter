@@ -40,5 +40,5 @@ jobs:
         run: dotnet test --configuration Release --no-build
 
       # TODO(week-4): golden-audio pipeline job, and a packaging job running
-      # src/LumosPresenter.Launcher/package.sh per platform once models and seeds
-      # are fetchable in CI.
+      # src/LumosPresenter.Launcher/package.sh per platform once the default model
+      # is fetchable in CI (seeds are committed; the speech models are not).

@@ -48,10 +48,9 @@ composed via DI in `WebHost`.
 ## Development
 
 ```bash
-# Bundled translations (KJV, ASV, BSB) — run once per clone. Downloads ~14 MB into
-# src/LumosPresenter.WebHost/data/seed, which the WebHost imports on first start.
-# Without it the app starts but every scripture lookup comes back empty.
-dotnet run scripts/fetch-seed-bibles.cs
+# Bundled translations (KJV, ASV, BSB) are committed in src/LumosPresenter.WebHost/data/seed
+# and imported on first start. To refresh them from upstream (re-verified before writing):
+#   dotnet run scripts/fetch-seed-bibles.cs -- --force
 
 # Backend (serves on http://0.0.0.0:5170)
 dotnet run --project src/LumosPresenter.WebHost
@@ -105,11 +104,11 @@ src/LumosPresenter.Launcher/package.sh linux-x64   # or linux-arm64
 | Windows | `LumosCast-<rid>/`, a folder that runs as-is, plus `LumosCast-<version>-<rid>-setup.exe` when Inno Setup is installed |
 | Linux | `LumosCast-<rid>/` (with a `.desktop` entry and icon) and `LumosCast-<version>-<rid>.tar.gz` |
 
-It needs .NET, Node/npm and bash (Git Bash on Windows). Before the first run, provide the
-content that is not build output: the translation seeds (`dotnet run
-scripts/fetch-seed-bibles.cs`) and the default speech model named by `Speech:ModelPath`
-in `appsettings.json`. The script stops with an error when either is missing, rather than
-build a package that cannot read scripture or start listening.
+It needs .NET, Node/npm and bash (Git Bash on Windows). The translation seeds and default
+backgrounds are in the repository; the one thing to provide before the first run is the
+default speech model named by `Speech:ModelPath` in `appsettings.json` (models are too large
+to commit). The script stops with an error when the model or the seeds are missing, rather
+than build a package that cannot start listening or read scripture.
 
 What every package gets, in one place so the platforms cannot drift apart:
 

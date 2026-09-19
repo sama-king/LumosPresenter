@@ -20,9 +20,9 @@
 # (Windows only), and a Linux or macOS package built on Windows loses the executable bit, so
 # build those on a Mac or Linux machine.
 #
-# Content that is not build output has to be provided before packaging:
-#   dotnet run scripts/fetch-seed-bibles.cs     the bundled translations (data/seed/*.db)
-#   models/whisper/ggml-tiny.en.bin             the default speech model (see appsettings.json)
+# The translation seeds (WebHost/data/seed) and default backgrounds (assets/backgrounds) are
+# committed. The speech models are not — too large — so put the default one (Speech:ModelPath
+# in appsettings.json, e.g. models/whisper/ggml-tiny.en.bin) under WebHost/ before packaging.
 set -euo pipefail
 
 usage() { sed -n '4,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
@@ -177,7 +177,7 @@ for seed in "$WEBHOST"/data/seed/*.db; do
   cp "$seed" "$OUT/data/seed/"
   seeds=$((seeds + 1))
 done
-[ "$seeds" -gt 0 ] || die "no translation seeds in WebHost/data/seed; run: dotnet run scripts/fetch-seed-bibles.cs"
+[ "$seeds" -gt 0 ] || die "no translation seeds in WebHost/data/seed (they are committed; restore them from git)"
 log "translation seeds: $seeds"
 
 if [ -n "$WITH_DATABASE" ]; then

@@ -68,7 +68,7 @@ All content enters through importers that normalize into the same schema:
    file (`{CODE}_books`, `{CODE}_verses`, books in canonical order), validates 66 books,
    imports translation metadata + book names + ~31k verses in one prepared-statement
    transaction. Used by `DatabaseInitializer` to seed bundled translations on first run
-   from `data/seed/*.db` (gitignored, downloaded by `scripts/fetch-seed-bibles.cs`).
+   from `data/seed/*.db` (committed; produced and refreshed by `scripts/fetch-seed-bibles.cs`).
 
    That script is not a plain download. Upstream's `formats/sqlite/*.db` currently hold
    seven concatenated copies of each Bible (217,714 verse rows for 31,102 verses; 462 rows

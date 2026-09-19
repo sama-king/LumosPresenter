@@ -9,9 +9,11 @@
 //
 //     dotnet run scripts/fetch-seed-bibles.cs
 //
-// The seed files are gitignored and ~14 MB once imported, so they are fetched rather than
-// committed. A .NET file-based program keeps this dependency-free: the SDK is already a
-// prerequisite, so there is nothing to install on either macOS or Windows.
+// The seed files it writes are committed (~14 MB), so a clone and every package have them
+// without running this; it is for refreshing them from upstream (--force to overwrite).
+// Commit only what this script produced: a raw upstream export carries the defects below.
+// A .NET file-based program keeps this dependency-free: the SDK is already a prerequisite,
+// so there is nothing to install on either macOS or Windows.
 //
 // Why this is not just a download:
 //
