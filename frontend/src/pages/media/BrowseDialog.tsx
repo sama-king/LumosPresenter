@@ -10,10 +10,11 @@ interface BrowseDialogProps {
 }
 
 /**
- * Server-side "Add from disk" browser. This exists because a browser cannot hand us a real
- * file path — a file input gives bytes and a bare name, never a location — and the gallery
- * links files rather than copying them. The console and the server run on the same machine,
- * so the server lists directories and the operator picks; every path we store comes from here.
+ * Fallback "Add from disk" browser, for a console opened from another machine. Normally Add
+ * from Disk opens the system file dialog, but the server shows that dialog on its own screen,
+ * which is no use to an operator elsewhere. A browser file input can't stand in — it gives
+ * bytes and a bare name, never a location, and the gallery links files rather than copying
+ * them — so here the server lists its directories and the operator picks.
  */
 export default function BrowseDialog({ onAdd, onClose, onError }: BrowseDialogProps) {
   const [listing, setListing] = useState<BrowseResponse | null>(null)

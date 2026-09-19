@@ -136,12 +136,18 @@ export const api = {
   deleteMedia: (id: string) => request<void>('DELETE', `/api/media/backgrounds/${id}`),
 
   // Media library (the /media tab). Files are linked by absolute path, never uploaded —
-  // browseMedia is how the console gets a real path, since a browser file input hides it.
+  // pickMediaFiles opens the system file dialog on the server machine, since a browser file
+  // input hides the path; browseMedia is its fallback for a console on another machine.
   getMediaLibrary: () =>
     request<{ items: MediaLibraryItemDto[] }>('GET', '/api/media/library'),
   addMediaPaths: (paths: string[]) =>
     request<AddMediaResult>('POST', '/api/media/library', { paths }),
   deleteMediaLibraryItem: (id: string) => request<void>('DELETE', `/api/media/library/${id}`),
+  pickMediaFiles: (kind: 'image' | 'video') =>
+    request<{ available: boolean; paths: string[] }>(
+      'POST',
+      `/api/media/library/pick?kind=${kind}`,
+    ),
   browseMedia: (path?: string) =>
     request<BrowseResponse>(
       'GET',

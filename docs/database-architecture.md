@@ -198,8 +198,10 @@ an error thumbnail. Deleting a gallery item unlinks the row and never touches th
 The unique index on `source_path` makes adding idempotent, so re-adding a file — or
 re-dropping a folder — updates nothing and duplicates nothing.
 
-Paths only ever originate server-side (`GET /api/media/library/browse`), because a browser
-cannot read a file's location from an input or a drop. `GET /api/media/library/{id}/file`
+Paths only ever originate server-side, because a browser cannot read a file's location from
+an input or a drop: `POST /api/media/library/pick` opens the system file dialog on the server
+machine, and `GET /api/media/library/browse` lists directories for a console opened from
+another machine, where that dialog would be out of the operator's reach. `GET /api/media/library/{id}/file`
 resolves its path from the row alone and never from the query string, so a linked gallery
 does not become an arbitrary-file-read endpoint.
 

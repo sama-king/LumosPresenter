@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.NetworkInformation;
 using LumosPresenter.Core.Abstractions;
 
 namespace LumosPresenter.WebHost.Api;
@@ -5,9 +7,12 @@ namespace LumosPresenter.WebHost.Api;
 /// <summary>
 /// Media gallery endpoints under /api/media/library. Files are linked from where they already
 /// live, never copied, so the console has to name a path on this machine — which a browser
-/// cannot read out of a file input or a drop. The /browse endpoint closes that gap: the
-/// WebHost and the console run on the same machine, so the server lists directories and the
-/// operator picks from them, and every stored path originates server-side.
+/// cannot read out of a file input or a drop. The /pick endpoint closes that gap by opening
+/// the operating system's own file dialog from the server, which does get real paths back.
+/// A console opened from another machine can't use that dialog — it would appear on the
+/// server's screen — so /browse remains as its fallback: the server lists directories and
+/// the operator picks from them in the console. Either way every stored path originates
+/// server-side.
 ///
 /// Security: the file endpoint resolves its path from the database row alone. A path from the
 /// query string is never opened, so a linked gallery is not a read-anything hole.
@@ -97,7 +102,46 @@ internal static class MediaLibraryApi
                 ? Results.Ok(new { })
                 : Results.NotFound(new { message = "Unknown media id." }));
 
-        // Server-side file browser backing the "Add from disk" dialog. Lists directories and
+        // Opens the system file dialog for "Add from Disk" and returns the chosen paths (empty on
+        // cancel) without linking them — the console links them through POST /media/library like
+        // any other add. `available: false` tells the console to fall back to /browse: the request
+        // came from another machine, or this one has no dialog the server can show.
+        api.MapPost("/media/library/pick", async (string? kind, HttpContext http) =>
+        {
+            if (!IsFromThisMachine(http.Connection.RemoteIpAddress))
+            {
+                return Results.Ok(new { available = false, paths = Array.Empty<string>() });
+            }
+            // One dialog at a time: a second click while one is open would stack another.
+            if (!await PickerGate.WaitAsync(0))
+            {
+                return Results.Conflict(new { message = "A file dialog is already open." });
+            }
+            try
+            {
+                FileFilter[] filters =
+                [
+                    new("Images and video", [.. ImageExtensions, .. VideoExtensions]),
+                    new("Images", ImageExtensions),
+                    new("Video", VideoExtensions),
+                ];
+                var defaultFilter = kind switch { "image" => 1, "video" => 2, _ => 0 };
+                var paths = await NativeFilePicker.PickFilesAsync("Add media", filters, defaultFilter);
+                return paths is null
+                    ? Results.Ok(new { available = false, paths = Array.Empty<string>() })
+                    : Results.Ok(new { available = true, paths });
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { message = ex.Message });
+            }
+            finally
+            {
+                PickerGate.Release();
+            }
+        });
+
+        // Server-side file browser backing the fallback "Add from disk" dialog. Lists directories and
         // supported media files only; with no path it starts at the operator's home directory.
         api.MapGet("/media/library/browse", (string? path) =>
         {
@@ -147,6 +191,29 @@ internal static class MediaLibraryApi
         });
 
         return api;
+    }
+
+    private static readonly SemaphoreSlim PickerGate = new(1, 1);
+
+    /// <summary>
+    /// True when the request came from the machine the server runs on — over loopback, or to
+    /// one of this machine's own LAN addresses (a console opened via the network URL).
+    /// </summary>
+    private static bool IsFromThisMachine(IPAddress? remote)
+    {
+        if (remote is null) return false;
+        if (remote.IsIPv4MappedToIPv6) remote = remote.MapToIPv4();
+        if (IPAddress.IsLoopback(remote)) return true;
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+                .Any(address => address.Address.Equals(remote));
+        }
+        catch (NetworkInformationException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
