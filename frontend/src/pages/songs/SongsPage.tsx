@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import LivePanel from '../../components/live/LivePanel'
 import { api } from '../../lib/api'
 import { useLive } from '../../lib/live'
@@ -40,9 +40,11 @@ export default function SongsPage() {
     window.setTimeout(() => setError(''), 6000)
   }, [])
 
-  // Records a song in the session history (whole songs, most-recent-first, de-duped).
+  // Records a song in the session history (whole songs, most-recent-first, de-duped). Going live
+  // does this, and so does the library's add-to-session button, which lets the operator line up
+  // a set before the service without putting anything on the displays.
   const recordSession = useCallback(
-    (song: SongDto) =>
+    (song: Pick<SongSummaryDto, 'id' | 'title' | 'author'>) =>
       setSession(prev => {
         const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         const withoutSong = prev.filter(s => s.id !== song.id)
@@ -191,6 +193,8 @@ export default function SongsPage() {
       ? liveSlide.sectionPosition
       : null
 
+  const sessionIds = useMemo(() => new Set(session.map(s => s.id)), [session])
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {error && (
@@ -234,6 +238,8 @@ export default function SongsPage() {
         selectedId={selected?.id ?? null}
         onPickSong={pickSong}
         onGoLiveSong={goLiveSong}
+        sessionIds={sessionIds}
+        onAddToSession={recordSession}
         onNewSong={newSong}
         onSearch={q => void refreshLibrary(q)}
         onImported={() => void refreshLibrary()}

@@ -1,4 +1,7 @@
-/** A song that was sent live this session (whole songs, not individual sections). */
+/**
+ * A song sent live, or added from the library, this session (whole songs, not individual
+ * sections).
+ */
 export interface SessionSong {
   id: number
   title: string

@@ -8,6 +8,9 @@ interface SongLibraryBandProps {
   selectedId: number | null
   onPickSong: (id: number) => void
   onGoLiveSong: (id: number) => void
+  /** Ids already in the session history, so their add button reads as done. */
+  sessionIds: Set<number>
+  onAddToSession: (song: SongSummaryDto) => void
   onNewSong: () => void
   onSearch: (query: string) => void
   /** Re-fetch the library after an import. */
@@ -28,6 +31,8 @@ export default function SongLibraryBand({
   selectedId,
   onPickSong,
   onGoLiveSong,
+  sessionIds,
+  onAddToSession,
   onNewSong,
   onSearch,
   onImported,
@@ -142,14 +147,15 @@ export default function SongLibraryBand({
               <ul className="panel-scroll grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1.5 overflow-y-auto pr-2 lg:grid-cols-3">
                 {songs.map(song => {
                   const isActive = song.id === selectedId
+                  const inSession = sessionIds.has(song.id)
                   return (
-                    <li key={song.id}>
+                    <li key={song.id} className="group relative">
                       <button
                         type="button"
                         onClick={() => onPickSong(song.id)}
                         onDoubleClick={() => onGoLiveSong(song.id)}
                         title="Click to preview · double-click to send live"
-                        className={`flex w-full items-center justify-between rounded border px-3 py-1.5 text-left transition-colors ${
+                        className={`flex w-full items-center justify-between rounded border py-1.5 pl-3 pr-9 text-left transition-colors ${
                           isActive
                             ? 'border-primary/40 bg-primary/5'
                             : 'border-outline-variant bg-surface-container-low hover:border-primary/30'
@@ -161,6 +167,19 @@ export default function SongLibraryBand({
                             <span className="font-normal text-on-surface-variant"> — {song.author}</span>
                           )}
                         </span>
+                      </button>
+                      {/* A sibling, not a child: a button can't nest inside the row's button. */}
+                      <button
+                        type="button"
+                        onClick={() => onAddToSession(song)}
+                        title={inSession ? 'In this session' : 'Add to session'}
+                        className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center rounded p-0.5 transition-colors ${
+                          inSession
+                            ? 'text-primary'
+                            : 'invisible text-on-surface-variant hover:text-primary group-hover:visible'
+                        }`}
+                      >
+                        <Icon name={inSession ? 'playlist_add_check' : 'playlist_add'} size={18} />
                       </button>
                     </li>
                   )

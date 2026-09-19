@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import Icon from '../Icon'
 import { useLive, type LiveSlide } from '../../lib/live'
 import LiveVideoMonitor from './LiveVideoMonitor'
@@ -20,6 +21,24 @@ export default function LivePanel() {
   // Only words can be cleared on their own; media has no text window to leave behind.
   const textLive = liveSlide !== null && liveSlide.kind !== 'media'
   const anythingUp = slides.length > 0 || live.item !== null || backdrop !== null
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // Changes when a different queue is pushed (a new song, a new slideshow) but not when the
+  // live slide steps within it — or when a verse is removed from a scripture queue.
+  const queueKey = `${live.origin}|${title}|${slides[0]?.id ?? ''}`
+
+  // A new queue starts scrolled to the top.
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [queueKey])
+
+  // Keep the live slide in view as it advances (arrow keys, the transport, a timer).
+  useEffect(() => {
+    if (liveId === null) return
+    scrollRef.current
+      ?.querySelector(`[data-slide-id="${CSS.escape(liveId)}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [queueKey, liveId])
 
   return (
     <aside className="flex w-[300px] shrink-0 flex-col border-l border-outline-variant bg-surface-container-low">
@@ -133,10 +152,10 @@ export default function LivePanel() {
             </div>
           )}
 
-          <div className="panel-scroll min-h-0 flex-1 overflow-y-auto p-3">
+          <div ref={scrollRef} className="panel-scroll min-h-0 flex-1 overflow-y-auto p-3">
             <ul className="flex flex-col gap-2">
               {slides.map((slide, position) => (
-                <li key={slide.id} className="group relative">
+                <li key={slide.id} data-slide-id={slide.id} className="group relative">
                   <button
                     type="button"
                     onClick={() => {
