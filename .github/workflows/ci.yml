@@ -6,8 +6,14 @@ on:
   pull_request:
 
 jobs:
+  # Every platform the app packages for builds and tests here, so platform-specific code
+  # (the native file dialog, audio and speech natives) cannot break one OS unnoticed.
   build-and-test:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,5 +39,6 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build
 
-      # TODO(week-4): golden-audio pipeline job and self-contained publish
-      # for osx-arm64 and win-x64.
+      # TODO(week-4): golden-audio pipeline job, and a packaging job running
+      # src/LumosPresenter.Launcher/package.sh per platform once models and seeds
+      # are fetchable in CI.

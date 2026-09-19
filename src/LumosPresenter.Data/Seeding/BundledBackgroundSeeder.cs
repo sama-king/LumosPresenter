@@ -22,9 +22,9 @@ namespace LumosPresenter.Data.Seeding;
 ///   shipped in a later release reaches an existing install.</item>
 ///   <item>Seeded, then deleted by the operator — leave it deleted. Without the ledger it
 ///   would reappear at every startup.</item>
-///   <item>Row present but its file missing — restore the file. The package ships a copy
-///   of the build machine's database but not its media directory, so a row can arrive in a
-///   fresh install with nothing on disk behind it.</item>
+///   <item>Row present but its file missing — restore the file. A database copied without
+///   its media directory (a package built with <c>--with-database</c>, or one moved by hand)
+///   carries rows with nothing on disk behind them.</item>
 /// </list>
 /// </summary>
 public sealed class BundledBackgroundSeeder(
