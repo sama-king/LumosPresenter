@@ -30,6 +30,12 @@ public class ReferenceParserTests
     [InlineData("john 3:16", "John 3:16")]
     [InlineData("psalm 23:1", "Psalms 23:1")]
     [InlineData("2 timothy 3:16", "2 Timothy 3:16")]
+    // A dash typed where a colon was meant. Speech carries no dash, so this is a typed
+    // query; before it was read the tail was dropped and the whole chapter came up.
+    [InlineData("john 3-16", "John 3:16")]
+    [InlineData("john 5-1", "John 5:1")]
+    [InlineData("1 john 5-1", "1 John 5:1")]
+    [InlineData("john 5-1-4", "John 5:1-4")]
     // Explicit chapter/verse keywords
     [InlineData("john chapter three verse sixteen", "John 3:16")]
     [InlineData("turn with me to romans chapter eight verse twenty eight", "Romans 8:28")]

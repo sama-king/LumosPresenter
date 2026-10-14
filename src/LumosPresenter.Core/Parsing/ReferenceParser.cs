@@ -203,6 +203,17 @@ public sealed class ReferenceParser
             pos += 2;
             structureFactor = 1.0;
         }
+        // "John 5-1" typed with a dash where a colon was meant. Speech never carries a dash,
+        // so this is a typed query, and dropping the tail silently put the whole chapter up
+        // instead of the verse asked for. Read below a colon: in print "Genesis 1-3" is a
+        // chapter range, which this cannot express, so the verse reading is a guess.
+        else if (tokens.Count > pos && tokens[pos].Kind == TokenKind.Dash
+            && NumberAt(tokens, pos + 1, out var dashVerse) && dashVerse <= MaxVerse)
+        {
+            verseStart = dashVerse;
+            pos += 2;
+            structureFactor = 0.9;
+        }
         else if (TryReadVerseToken(tokens, SkipVerseConnective(tokens, pos), out var kwVerse, out var afterKwVerse))
         {
             verseStart = kwVerse;
