@@ -95,10 +95,44 @@ export default function SearchPanel({
     return true
   }
 
+  // Preview-as-you-type. The parser is the judge of when a query has resolved: it returns
+  // nothing until the text names a book and a chapter, so a half-typed reference simply
+  // leaves the preview alone. Only the middle column is touched — going live stays an
+  // explicit Enter, because the displays are in front of a congregation.
+  const previewRef = useRef(onPickResult)
+  previewRef.current = onPickResult
+  const lastPreviewed = useRef('')
+
+  useEffect(() => {
+    const q = query.trim()
+    // A reference needs a number; without one there is nothing to resolve and no reason
+    // to ask the server on every keystroke.
+    if (!/\d/.test(q) || q === lastPreviewed.current) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      api
+        .searchScripture(q)
+        .then(response => {
+          // Ignore a slow answer the operator has already typed past, and say nothing when
+          // the query does not resolve — mid-typing is not an error.
+          if (cancelled || response.results.length === 0) return
+          lastPreviewed.current = q
+          setResults(response.results)
+          previewRef.current(response.results[0])
+        })
+        .catch(() => {})
+    }, 250)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [query])
+
   const search = (e: React.FormEvent) => {
     e.preventDefault()
     const q = query.trim()
     if (!q || busy) return
+    lastPreviewed.current = q
     setBusy(true)
     api
       .searchScripture(q)

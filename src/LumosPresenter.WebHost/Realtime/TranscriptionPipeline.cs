@@ -210,6 +210,12 @@ public sealed class TranscriptionPipeline(
             return;
         }
 
+        // Every final utterance is logged, not just the ones that parse. A reference that
+        // fails to reach the displays is otherwise undiagnosable after the fact: the log
+        // shows what was detected but never the words it was detected from, and the
+        // transcript strip in the console is gone as soon as the next utterance lands.
+        logger.LogInformation("Utterance: {Utterance}", segment.Text);
+
         // Spoken translation switches ("reading from the Berean Standard") run before
         // reference parsing so a combined utterance ("John 3:16 in the King James")
         // resolves its verse in the new translation. SelectAsync re-pushes whatever is
@@ -234,7 +240,8 @@ public sealed class TranscriptionPipeline(
 
         foreach (var reference in _parser.Parse(segment.Text))
         {
-            logger.LogInformation("Detected {Reference} (confidence {Confidence:0.00})", reference, reference.Confidence);
+            logger.LogInformation("Detected {Reference} (confidence {Confidence:0.00}) in: {Utterance}",
+                reference, reference.Confidence, segment.Text);
 
             // Resolve verse text in the active translation. Chapter-only references skip the
             // fetch (the verse arrives moments later via the continuation logic); failures
