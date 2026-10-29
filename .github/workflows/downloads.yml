@@ -1,0 +1,50 @@
+name: Build Windows downloads
+on:
+  push:
+    branches: [release/lumoscast-1.0.0]
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Download bundled speech models
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src/LumosPresenter.WebHost/models/whisper | Out-Null
+          curl.exe -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin -o src/LumosPresenter.WebHost/models/whisper/ggml-tiny.en.bin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          curl.exe -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin -o src/LumosPresenter.WebHost/models/whisper/ggml-base.en.bin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build package
+        shell: bash
+        run: bash src/LumosPresenter.Launcher/package.sh ${{ matrix.rid }}
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          & 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe' /Q /DAppVersion=1.0.0 /DRid=${{ matrix.rid }} src/LumosPresenter.Launcher/package-windows.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test
+        shell: pwsh
+        run: dotnet test tests/LumosPresenter.Tests/LumosPresenter.Tests.csproj -c Release
+      - name: Publish installer to draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = 'artifacts/LumosCast-1.0.0-${{ matrix.rid }}-setup.exe'
+          if (!(Test-Path $installer)) { throw 'Installer missing' }
+          if (Test-Path 'artifacts/LumosCast-${{ matrix.rid }}/data/lumos.db') { throw 'Personal database in package' }
+          Get-FileHash $installer -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content -Encoding ascii "$installer.sha256"
+          gh release upload v1.0.0 $installer "$installer.sha256" --repo sama-king/LumosPresenter
